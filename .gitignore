@@ -1,0 +1,111 @@
+# ==========================================
+# C++ Compiled Files
+# ==========================================
+*.o
+*.obj
+*.lo
+*.a
+*.lib
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.out
+*.app
+
+# ==========================================
+# CMake Build Files
+# ==========================================
+build/
+Build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+CMakeUserPresets.json
+compile_commands.json
+install_manifest.txt
+Makefile
+*.cmake
+
+# Keep manually written CMake modules
+!CMakeLists.txt
+
+# ==========================================
+# Debugging & Profiling
+# ==========================================
+*.dSYM/
+*.gcda
+*.gcno
+*.gcov
+*.profraw
+*.profdata
+core
+core.*
+gmon.out
+
+# ==========================================
+# IDE - VS Code
+# ==========================================
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# ==========================================
+# IDE - CLion / JetBrains
+# ==========================================
+.idea/
+*.iml
+
+# ==========================================
+# IDE - Visual Studio
+# ==========================================
+.vs/
+*.suo
+*.user
+*.VC.db
+*.VC.opendb
+x64/
+Debug/
+Release/
+
+# ==========================================
+# Temporary Files
+# ==========================================
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+.cache/
+
+# ==========================================
+# Logs
+# ==========================================
+*.log
+logs/
+
+# ==========================================
+# Python (Build/Utility Scripts)
+# ==========================================
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# ==========================================
+# OS Files
+# ==========================================
+.DS_Store
+Thumbs.db
+
+# ==========================================
+# Dependencies
+# ==========================================
+_deps/
+vcpkg_installed/

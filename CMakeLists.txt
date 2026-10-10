@@ -20,7 +20,7 @@ target_include_directories(controlApp PRIVATE
 ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-add_subdirectory(camera)
+add_subdirectory(cameraController)
 
 target_link_libraries(controlApp
 PRIVATE 

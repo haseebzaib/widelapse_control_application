@@ -18,7 +18,7 @@ int main()
     {
         if (command == "capture")
         {
-            if (camera.capture_image("image.jpg"))
+            if (camera.capture_image("/home/hsb/Desktop/Freelance_Projects/Zero_Axis/widelapse/widelapse_control_application/build/images/image.jpg"))
                 std::cout << "Image saved\n";
             else
                 std::cout << "Capture failed\n";

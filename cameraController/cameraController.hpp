@@ -29,6 +29,13 @@ public:
     bool capture_image(std::filesystem::path path);
 
 private:
+    struct logLevel
+    {
+        static constexpr std::string_view info = "INFO";
+        static constexpr std::string_view warn = "WARN";
+        static constexpr std::string_view err = "ERR";
+    };
+    void logging(std::string_view loggingLevel, std::string msg);
     bool create_context();
 
     static void error_cb(GPContext *context, const char *msg, void *data);

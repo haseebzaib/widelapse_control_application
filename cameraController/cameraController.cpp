@@ -47,7 +47,7 @@ bool cameraController::connect()
     {
         if (!create_context())
         {
-            std::cout << std::format("[ERROR][{}] creating context failed\n", logTag);
+            logging(cameraController::logLevel::err, std::format("creating context failed"));
             return false;
         }
     }
@@ -55,14 +55,15 @@ bool cameraController::connect()
     int ret = gp_camera_new(&camera_);
     if (ret < GP_OK)
     {
-        std::cout << std::format("[ERROR][{}] camera new failed\n", logTag, logTag, gp_result_as_string(ret));
+        logging(cameraController::logLevel::err, std::format("camera new failed reason:{}", gp_result_as_string(ret)));
         return false;
     }
 
     ret = gp_camera_init(camera_, context_);
     if (ret < GP_OK)
     {
-        std::cout << std::format("[ERROR][{}] camera init failed reason:{}\n", logTag, gp_result_as_string(ret));
+     
+        logging(cameraController::logLevel::err, std::format("camera init failed reason:{}", gp_result_as_string(ret)));
         gp_camera_free(camera_);
         camera_ = nullptr;
 
@@ -91,7 +92,7 @@ std::string cameraController::get_summary()
 {
     if (!connected_)
     {
-        std::cout << std::format("[ERROR][{}] cant summary not connected \n", logTag);
+         logging(cameraController::logLevel::warn, std::format("cant summary not connected"));
         return {};
     }
 
@@ -104,7 +105,7 @@ std::string cameraController::get_summary()
 
     if (ret < GP_OK)
     {
-        std::cout << std::format("[ERROR][{}] summary get failed reason:{}\n", logTag, logTag, gp_result_as_string(ret));
+        logging(cameraController::logLevel::err, std::format("summary get failed reason:{}", gp_result_as_string(ret)));
         return {};
     }
 
@@ -115,13 +116,13 @@ bool cameraController::capture_image(std::filesystem::path path)
 {
     if (!connected_)
     {
-        std::cout << std::format("[ERROR][{}] cant capture not connected\n", logTag);
+        logging(cameraController::logLevel::warn, std::format("cant capture not connected"));
         return false;
     }
 
     if (!std::filesystem::exists(path.parent_path()))
     {
-        std::cout << std::format("[WARN][{}] Directory does not exists, creating one\n", logTag);
+        logging(cameraController::logLevel::warn, std::format("Directory does not exists, creating one"));
         std::filesystem::create_directory(path.parent_path());
     }
 
@@ -135,22 +136,22 @@ bool cameraController::capture_image(std::filesystem::path path)
 
     if (ret < GP_OK)
     {
-        std::cout << std::format("[ERROR][{}] capture failed reason:{}\n", logTag, gp_result_as_string(ret));
+        logging(cameraController::logLevel::err, std::format("capture failed reason:{}", gp_result_as_string(ret)));
         return false;
     }
 
     CameraFile *file = nullptr;
 
-    int fd = open( path.string().c_str(),O_CREAT | O_WRONLY | O_TRUNC, 0644);
+    int fd = open(path.string().c_str(), O_CREAT | O_WRONLY | O_TRUNC, 0644);
 
     ret = gp_file_new_from_fd(&file, fd);
 
     if (ret < GP_OK)
-        {
-            std::cout << std::format("[ERROR][{}] capture new file failed reason:{}\n",logTag,gp_result_as_string(ret));
-            return false;
-        }
+    {
 
+        logging(cameraController::logLevel::err, std::format("capture new file failed reason:{}", gp_result_as_string(ret)));
+        return false;
+    }
 
     ret = gp_camera_file_get(
         camera_,
@@ -162,15 +163,15 @@ bool cameraController::capture_image(std::filesystem::path path)
 
     if (ret >= GP_OK)
     {
-            ret = gp_camera_file_delete(camera_, path_.folder, path_.name, context_);
-            if (ret < GP_OK)
-            {
-                std::cout << std::format("[ERROR][{}] capture file deletion failed reason:{}\n", logTag, gp_result_as_string(ret));
-            }
+        ret = gp_camera_file_delete(camera_, path_.folder, path_.name, context_);
+        if (ret < GP_OK)
+        {
+            logging(cameraController::logLevel::err, std::format("capture file deletion failed reason:{}", gp_result_as_string(ret)));
+        }
     }
     else
     {
-         std::cout << std::format("[ERROR][{}] capture file failed reason:{}\n", logTag, gp_result_as_string(ret));
+        logging(cameraController::logLevel::err, std::format("capture file failed reason:{}", gp_result_as_string(ret)));
     }
 
     gp_file_free(file);
@@ -178,12 +179,18 @@ bool cameraController::capture_image(std::filesystem::path path)
     return ret >= GP_OK;
 }
 
+void cameraController::logging(std::string_view loggingLevel, std::string msg)
+{
+
+    std::cout << std::format("[{}][{}] {}\n", loggingLevel, logTag, msg);
+}
+
 bool cameraController::create_context()
 {
     context_ = gp_context_new();
     if (!context_)
     {
-        std::cout << std::format("[ERROR][{}] Could not create context\n", logTag);
+        logging(cameraController::logLevel::err, "Could not create context");
         return false;
     }
 
@@ -195,7 +202,14 @@ void cameraController::error_cb(
     const char *message,
     void *data)
 {
-    std::cout << std::format("[ERROR][{}]cb {}\n", logTag, message);
+
+    cameraController *self = static_cast<cameraController *>(data);
+    if (!self)
+    {
+        return;
+    }
+
+    self->logging(cameraController::logLevel::err, message);
 }
 
 void cameraController::status_cb(
@@ -203,7 +217,13 @@ void cameraController::status_cb(
     const char *message,
     void *data)
 {
-    std::cout << std::format("[INFO][{}]cb {}\n", logTag, message);
+    cameraController *self = static_cast<cameraController *>(data);
+    if (!self)
+    {
+        return;
+    }
+
+    self->logging(cameraController::logLevel::info, message);
 }
 
 unsigned int cameraController::progress_start_cb(
@@ -212,8 +232,13 @@ unsigned int cameraController::progress_start_cb(
     const char *message,
     void *data)
 {
-    std::cout << std::format("[INFO][{}]cb progress target{},{}\n", logTag, target, message);
+    cameraController *self = static_cast<cameraController *>(data);
+    if (!self)
+    {
+        return 0;
+    }
 
+    self->logging(cameraController::logLevel::info, message);
     return 0;
 }
 
@@ -223,7 +248,13 @@ void cameraController::progress_update_cb(
     float current,
     void *data)
 {
-    std::cout << std::format("[INFO][{}]cb progress id{},current{}\n", logTag, id, current);
+    cameraController *self = static_cast<cameraController *>(data);
+    if (!self)
+    {
+        return;
+    }
+
+    self->logging(cameraController::logLevel::info, std::format("progress id{},current{}", id, current));
 }
 
 void cameraController::progress_stop_cb(
@@ -231,5 +262,11 @@ void cameraController::progress_stop_cb(
     unsigned int id,
     void *data)
 {
-    std::cout << std::format("[INFO][{}]cb progress id{}\n", logTag, id);
+    cameraController *self = static_cast<cameraController *>(data);
+    if (!self)
+    {
+        return;
+    }
+
+    self->logging(cameraController::logLevel::info, std::format("progress id{}", id));
 }

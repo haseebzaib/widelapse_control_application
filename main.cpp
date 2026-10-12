@@ -1,6 +1,26 @@
 #include "cameraController/cameraController.hpp"
 #include <iostream>
 #include <string>
+#include "filesystem"
+#include "chrono"
+#include "ctime"
+#include "format"
+
+std::string get_timestamp()
+{
+    std::chrono::time_point now = std::chrono::system_clock::now();
+    std::time_t time = std::chrono::system_clock::to_time_t(now);
+    std::tm localTime{};
+    localtime_r(&time, &localTime);
+
+    return std::format("image_{:04}-{:02}-{:02}_{:02}-{:02}-{:02}.jpg",
+                       localTime.tm_year + 1900,
+                       localTime.tm_mon + 1,
+                       localTime.tm_mday,
+                       localTime.tm_hour,
+                       localTime.tm_min,
+                       localTime.tm_sec);
+}
 
 int main()
 {
@@ -16,10 +36,16 @@ int main()
 
     while (std::getline(std::cin, command))
     {
+
         if (command == "capture")
         {
-            if (camera.capture_image("/home/hsb/Desktop/Freelance_Projects/Zero_Axis/widelapse/widelapse_control_application/build/images/image.jpg"))
-                std::cout << "Image saved\n";
+
+            std::filesystem::path basePath = "/opt/widelapse/images";
+            std::filesystem::path imagePath = basePath / get_timestamp();
+
+            if (camera.capture_image(imagePath))
+                std::cout
+                    << "Image saved\n";
             else
                 std::cout << "Capture failed\n";
         }

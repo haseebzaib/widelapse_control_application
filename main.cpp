@@ -7,6 +7,8 @@
 #include "ctime"
 #include "format"
 
+bool sftp_connected = false;
+
 std::string get_image_name_with_timestamp()
 {
     std::chrono::time_point now = std::chrono::system_clock::now();
@@ -23,17 +25,22 @@ std::string get_image_name_with_timestamp()
                        localTime.tm_sec);
 }
 
+
+
 int main()
 {
     cameraController camera;
     sftpController sftpServer;
 
-    sftpServer.connect_sftp("94.130.57.90", "sftpuser", "P@ssword.com@2k25*");
+    sftp_connected = sftpServer.connect_sftp("94.130.57.90", "sftpuser", "P@ssword.com@2k25*");
 
+    if (!sftp_connected)
+    {
+        std::cout << std::format("SFTP failed to connect\n");
+    }
     if (!camera.connect())
     {
-        std::cerr << "Camera connection failed\n";
-        return 1;
+        std::cout << "Camera connection failed\n";
     }
 
     std::string command;
@@ -55,7 +62,14 @@ int main()
                 std::cout
                     << "Image saved\n";
                 std::string str = imagePath.string();
-                sftpServer.transfer(str, sftpServerPath);
+                if(!sftpServer.transfer(str, sftpServerPath))
+                {
+                   std::cout << "Cimage failed to send to sftp server\n"; 
+                }
+                else
+                {
+                     std::cout << "image sftp success\n"; 
+                }
             }
             else
             {

@@ -66,7 +66,7 @@ bool sftpController::connect_sftp(std::string_view addr, std::string_view userna
     if (connect(sock_, (struct sockaddr *)&sin_, sizeof(struct sockaddr_in)))
     {
         logging(logLevel::err, "failed to connect socket");
-        //disconnect_sftp();
+        // disconnect_sftp();
         return false;
     }
 
@@ -77,7 +77,7 @@ bool sftpController::connect_sftp(std::string_view addr, std::string_view userna
     if (!session_)
     {
         logging(logLevel::err, "failed to create session");
-        //disconnect_sftp();
+        // disconnect_sftp();
         return false;
     }
 
@@ -89,7 +89,7 @@ bool sftpController::connect_sftp(std::string_view addr, std::string_view userna
     if (rt)
     {
         logging(logLevel::err, std::format("failure establishing an ssh session: {}", rt));
-        //disconnect_sftp();
+        // disconnect_sftp();
         return false;
     }
 
@@ -99,14 +99,14 @@ bool sftpController::connect_sftp(std::string_view addr, std::string_view userna
     if (!fingerPrint_)
     {
         logging(logLevel::err, "fingerprint is null");
-        //disconnect_sftp();
+        // disconnect_sftp();
         return false;
     }
 
     if (libssh2_userauth_password(session_, username.data(), password.data()))
     {
         logging(logLevel::info, "Authentication by password failed");
-        //disconnect_sftp();
+        // disconnect_sftp();
         return false;
     }
 
@@ -114,7 +114,7 @@ bool sftpController::connect_sftp(std::string_view addr, std::string_view userna
     if (!sftp_session_)
     {
         logging(logLevel::info, "Unable to init SFTP server");
-        //disconnect_sftp();
+        // disconnect_sftp();
         return false;
     }
 
@@ -135,7 +135,7 @@ void sftpController::disconnect_sftp()
 
     if (sftp_handle_)
     {
-         logging(logLevel::err, "1");
+        logging(logLevel::err, "1");
         libssh2_sftp_close(sftp_handle_);
         sftp_handle_ = nullptr;
     }
@@ -242,6 +242,7 @@ bool sftpController::transfer(std::string_view sourcePath, std::string_view dest
     if (sftp_handle_)
     {
         libssh2_sftp_close(sftp_handle_);
+        sftp_handle_ = nullptr;
     }
 
     fclose(local);

@@ -52,6 +52,8 @@ bool cameraController::connect()
         }
     }
 
+    disconnect();
+
     int ret = gp_camera_new(&camera_);
     if (ret < GP_OK)
     {
@@ -62,7 +64,7 @@ bool cameraController::connect()
     ret = gp_camera_init(camera_, context_);
     if (ret < GP_OK)
     {
-     
+
         logging(cameraController::logLevel::err, std::format("camera init failed reason:{}", gp_result_as_string(ret)));
         gp_camera_free(camera_);
         camera_ = nullptr;
@@ -92,7 +94,7 @@ std::string cameraController::get_summary()
 {
     if (!connected_)
     {
-         logging(cameraController::logLevel::warn, std::format("cant summary not connected"));
+        logging(cameraController::logLevel::warn, std::format("cant summary not connected"));
         return {};
     }
 
@@ -116,8 +118,11 @@ bool cameraController::capture_image(std::filesystem::path path)
 {
     if (!connected_)
     {
-        logging(cameraController::logLevel::warn, std::format("cant capture not connected"));
-        return false;
+        if (!connect())
+        {
+            logging(cameraController::logLevel::warn, std::format("cant capture not connected"));
+            return false;
+        }
     }
 
     if (!std::filesystem::exists(path.parent_path()))
@@ -137,6 +142,7 @@ bool cameraController::capture_image(std::filesystem::path path)
     if (ret < GP_OK)
     {
         logging(cameraController::logLevel::err, std::format("capture failed reason:{}", gp_result_as_string(ret)));
+        disconnect();
         return false;
     }
 
@@ -150,6 +156,7 @@ bool cameraController::capture_image(std::filesystem::path path)
     {
 
         logging(cameraController::logLevel::err, std::format("capture new file failed reason:{}", gp_result_as_string(ret)));
+        disconnect();
         return false;
     }
 
@@ -172,6 +179,7 @@ bool cameraController::capture_image(std::filesystem::path path)
     else
     {
         logging(cameraController::logLevel::err, std::format("capture file failed reason:{}", gp_result_as_string(ret)));
+        disconnect();
     }
 
     gp_file_free(file);

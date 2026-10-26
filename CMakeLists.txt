@@ -25,6 +25,7 @@ ${CMAKE_CURRENT_SOURCE_DIR}
 
 add_subdirectory(cameraController)
 add_subdirectory(sftpController)
+add_subdirectory(utils)
 
 target_link_libraries(controlApp
 PRIVATE 

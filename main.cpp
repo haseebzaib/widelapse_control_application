@@ -1,5 +1,6 @@
 #include "cameraController/cameraController.hpp"
 #include "sftpController/sftpController.hpp"
+#include "schedulingController/schedulingController.hpp"
 #include <iostream>
 #include <string>
 #include "filesystem"
@@ -8,6 +9,10 @@
 #include "format"
 
 bool sftp_connected = false;
+
+
+schedulingController cameraScheduller("cameraScheduller");
+
 
 std::string get_image_name_with_timestamp()
 {

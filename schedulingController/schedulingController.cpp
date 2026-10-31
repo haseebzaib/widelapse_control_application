@@ -23,7 +23,18 @@ void schedulingController::scheduler_loop(std::stop_token stopToken)
     logging(logLevel::info, "schedulingController loop has stopped");
 }
 
+void schedulingController::add_profile(scheduleProfile addProfile)
+{
+    addProfile_.push_back(addProfile);
+    int lastIndex = addProfile_.size() - 1;
+    logging(logLevel::info, std::format("profile added: {},{},{},{},{}", addProfile_[lastIndex].name,
+                                        addProfile_[lastIndex].weekDays,
+                                        addProfile_[lastIndex].startTime,
+                                        addProfile_[lastIndex].endTime,
+                                        addProfile_[lastIndex].interval));
+}
+
 void schedulingController::logging(std::string_view loggingLevel, std::string msg)
 {
-    std::cout << std::format("[{}][{}][{}] {}\n", loggingLevel, logTag, controllerName_,msg);
+    std::cout << std::format("[{}][{}][{}] {}\n", loggingLevel, logTag, controllerName_, msg);
 }

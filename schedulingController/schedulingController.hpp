@@ -50,6 +50,8 @@ private:
     void logging(std::string_view loggingLevel, std::string msg);
     inline static const std::string logTag = "schedulingController";
 
+    std::vector<scheduleProfile> addProfile_;
     std::string controllerName_;
     std::jthread worker_;
+
 };

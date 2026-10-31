@@ -8,6 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(PkgConfig REQUIRED)
+find_package(Threads REQUIRED)
 
 pkg_check_modules(GPHOTO2 REQUIRED IMPORTED_TARGET libgphoto2)
 pkg_check_modules(LIBSSH2 REQUIRED IMPORTED_TARGET libssh2)
@@ -32,4 +33,15 @@ target_link_libraries(controlApp
 PRIVATE 
      PkgConfig::GPHOTO2
      PkgConfig::LIBSSH2
+     Threads::Threads
 )
+include(CTest)
+if(BUILD_TESTING)
+    add_executable(schedulingController_test
+        tests/schedulingController_test.cpp
+        schedulingController/schedulingController.cpp
+    )
+    target_include_directories(schedulingController_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(schedulingController_test PRIVATE Threads::Threads)
+    add_test(NAME schedulingController COMMAND schedulingController_test)
+endif()

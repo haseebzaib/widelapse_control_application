@@ -11,6 +11,7 @@
 #include "netinet/in.h"
 #include "arpa/inet.h"
 #include <fcntl.h>
+#include <filesystem>
 #include "stdint.h"
 
 
@@ -29,6 +30,8 @@ public:
     void disconnect_sftp();
 
     bool transfer(std::string_view sourcePath, std::string_view destinationPath);
+    bool transfer_pending_images(const std::filesystem::path &imageDirectory,
+                                 const std::filesystem::path &remoteDirectory);
 
 private:
     struct logLevel
@@ -42,16 +45,16 @@ private:
 
 
     uint32_t hostaddr_;
-    libssh2_socket_t sock_ ;
-    struct sockaddr_in sin_ ;
+    libssh2_socket_t sock_ = LIBSSH2_INVALID_SOCKET;
+    struct sockaddr_in sin_{};
     LIBSSH2_SESSION *session_ = nullptr;
     LIBSSH2_SFTP *sftp_session_ = nullptr;
     LIBSSH2_SFTP_HANDLE *sftp_handle_ = nullptr;
     const char *fingerPrint_;
 
-    std::string_view addr_;
-    std::string_view username_;
-    std::string_view password_;
+    std::string addr_;
+    std::string username_;
+    std::string password_;
 
     bool libssh2_init_status_ = false;
     bool connected_ = false;

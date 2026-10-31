@@ -128,7 +128,7 @@ bool cameraController::capture_image(std::filesystem::path path)
     if (!std::filesystem::exists(path.parent_path()))
     {
         logging(cameraController::logLevel::warn, std::format("Directory does not exists, creating one"));
-        std::filesystem::create_directory(path.parent_path());
+        std::filesystem::create_directories(path.parent_path());
     }
 
     CameraFilePath path_{};
@@ -150,11 +150,18 @@ bool cameraController::capture_image(std::filesystem::path path)
 
     int fd = open(path.string().c_str(), O_CREAT | O_WRONLY | O_TRUNC, 0644);
 
+    if (fd < 0)
+    {
+        logging(logLevel::err, "Cannot open capture file: " + path.string());
+        return false;
+    }
+
     ret = gp_file_new_from_fd(&file, fd);
 
     if (ret < GP_OK)
     {
 
+        close(fd);
         logging(cameraController::logLevel::err, std::format("capture new file failed reason:{}", gp_result_as_string(ret)));
         disconnect();
         return false;
@@ -170,10 +177,10 @@ bool cameraController::capture_image(std::filesystem::path path)
 
     if (ret >= GP_OK)
     {
-        ret = gp_camera_file_delete(camera_, path_.folder, path_.name, context_);
-        if (ret < GP_OK)
+        const int deleteResult = gp_camera_file_delete(camera_, path_.folder, path_.name, context_);
+        if (deleteResult < GP_OK)
         {
-            logging(cameraController::logLevel::err, std::format("capture file deletion failed reason:{}", gp_result_as_string(ret)));
+            logging(cameraController::logLevel::err, std::format("capture file deletion failed reason:{}", gp_result_as_string(deleteResult)));
         }
     }
     else

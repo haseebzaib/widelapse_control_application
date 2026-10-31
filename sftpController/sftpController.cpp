@@ -1,5 +1,9 @@
 #include "sftpController.hpp"
 
+#include <algorithm>
+#include <fstream>
+#include <vector>
+
 sftpController::sftpController()
 {
     connected_ = false;
@@ -18,8 +22,9 @@ sftpController::sftpController()
 
 sftpController::~sftpController()
 {
-    libssh2_init_status_ = false;
     disconnect_sftp();
+    if (libssh2_init_status_)
+        libssh2_exit();
 }
 
 bool sftpController::connect_sftp(std::string_view addr, std::string_view username, std::string_view password)
@@ -46,7 +51,7 @@ bool sftpController::connect_sftp(std::string_view addr, std::string_view userna
     }
     disconnect_sftp();
 
-    hostaddr_ = inet_addr(addr.data());
+    hostaddr_ = inet_addr(addr_.c_str());
 
     sock_ = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -66,7 +71,7 @@ bool sftpController::connect_sftp(std::string_view addr, std::string_view userna
     if (connect(sock_, (struct sockaddr *)&sin_, sizeof(struct sockaddr_in)))
     {
         logging(logLevel::err, "failed to connect socket");
-        // disconnect_sftp();
+        disconnect_sftp();
         return false;
     }
 
@@ -77,7 +82,7 @@ bool sftpController::connect_sftp(std::string_view addr, std::string_view userna
     if (!session_)
     {
         logging(logLevel::err, "failed to create session");
-        // disconnect_sftp();
+        disconnect_sftp();
         return false;
     }
 
@@ -89,24 +94,24 @@ bool sftpController::connect_sftp(std::string_view addr, std::string_view userna
     if (rt)
     {
         logging(logLevel::err, std::format("failure establishing an ssh session: {}", rt));
-        // disconnect_sftp();
+        disconnect_sftp();
         return false;
     }
 
     fingerPrint_ = libssh2_hostkey_hash(session_, LIBSSH2_HOSTKEY_HASH_SHA256);
-    logging(logLevel::info, std::format("fingerprint: {}", fingerPrint_));
+    // The fingerprint is binary data, not a null-terminated string.
 
     if (!fingerPrint_)
     {
         logging(logLevel::err, "fingerprint is null");
-        // disconnect_sftp();
+        disconnect_sftp();
         return false;
     }
 
-    if (libssh2_userauth_password(session_, username.data(), password.data()))
+    if (libssh2_userauth_password(session_, username_.c_str(), password_.c_str()))
     {
         logging(logLevel::info, "Authentication by password failed");
-        // disconnect_sftp();
+        disconnect_sftp();
         return false;
     }
 
@@ -114,15 +119,13 @@ bool sftpController::connect_sftp(std::string_view addr, std::string_view userna
     if (!sftp_session_)
     {
         logging(logLevel::info, "Unable to init SFTP server");
-        // disconnect_sftp();
+        disconnect_sftp();
         return false;
     }
 
     connected_ = true;
 
-    //  logging(logLevel::info, std::format("RT value {}",rt));
-
-    return rt != 1;
+    return true;
 }
 
 bool sftpController::is_connected()
@@ -135,35 +138,27 @@ void sftpController::disconnect_sftp()
 
     if (sftp_handle_)
     {
-        logging(logLevel::err, "1");
         libssh2_sftp_close(sftp_handle_);
         sftp_handle_ = nullptr;
     }
 
     if (sftp_session_)
     {
-        logging(logLevel::err, "2");
         libssh2_sftp_shutdown(sftp_session_);
         sftp_session_ = nullptr;
     }
 
     if (session_)
     {
-        logging(logLevel::err, "3");
         libssh2_session_disconnect(session_, "Normal Shutdown");
         libssh2_session_free(session_);
         session_ = nullptr;
     }
     if (sock_ != LIBSSH2_INVALID_SOCKET)
     {
-        logging(logLevel::err, "4");
         shutdown(sock_, 2);
-        LIBSSH2_SOCKET_CLOSE(sock_);
-    }
-    if (!libssh2_init_status_)
-    {
-        logging(logLevel::err, "5");
-        libssh2_exit();
+        close(sock_);
+        sock_ = LIBSSH2_INVALID_SOCKET;
     }
 
     connected_ = false;
@@ -171,83 +166,94 @@ void sftpController::disconnect_sftp()
 
 bool sftpController::transfer(std::string_view sourcePath, std::string_view destinationPath)
 {
-    int rt = 1;
+    if (!connected_ && !connect_sftp(addr_, username_, password_))
+        return false;
 
-    FILE *local;
-    char mem[1024 * 100];
-    size_t nread;
-    ssize_t nwritten;
-    char *ptr;
-
-    if (libssh2_init_status_ == false || connected_ == false)
+    const std::string source(sourcePath);
+    const std::string destination(destinationPath);
+    FILE *local = fopen(source.c_str(), "rb");
+    if (!local)
     {
-
-        if (!connect_sftp(addr_, username_, password_))
-        {
-            logging(logLevel::err, "Connection failed");
-
-            return false;
-        }
+        logging(logLevel::err, "Cannot open local file " + source);
+        return false;
     }
 
-    sftp_handle_ = libssh2_sftp_open(sftp_session_, destinationPath.data(),
-                                     LIBSSH2_FXF_WRITE |
-                                         LIBSSH2_FXF_CREAT |
-                                         LIBSSH2_FXF_TRUNC,
-                                     LIBSSH2_SFTP_S_IRUSR |
-                                         LIBSSH2_SFTP_S_IWUSR |
-                                         LIBSSH2_SFTP_S_IRGRP |
-                                         LIBSSH2_SFTP_S_IROTH);
-
-    if (!sftp_handle_ && libssh2_session_last_errno(session_) != LIBSSH2_ERROR_EAGAIN)
+    sftp_handle_ = libssh2_sftp_open(sftp_session_, destination.c_str(),
+                                    LIBSSH2_FXF_WRITE | LIBSSH2_FXF_CREAT | LIBSSH2_FXF_TRUNC,
+                                    0644);
+    if (!sftp_handle_)
     {
-        logging(logLevel::err, std::format("Unable to open file with SFTP: {}",
-                                           libssh2_sftp_last_error(sftp_session_)));
+        logging(logLevel::err, "Unable to open remote file " + destination);
+        fclose(local);
         disconnect_sftp();
         return false;
     }
 
-    local = fopen(sourcePath.data(), "rb");
-    if (!local)
+    bool success = true;
+    char buffer[1024 * 100];
+    size_t count;
+    while ((count = fread(buffer, 1, sizeof(buffer), local)) > 0)
     {
-        logging(logLevel::err, std::format("Cannot open local file {}", sourcePath.data()));
-        return false;
-    }
-
-    do
-    {
-        nread = fread(mem, 1, sizeof(mem), local);
-        if (nread <= 0)
-            break; /* end of file */
-        ptr = mem;
-
-        do
+        size_t offset = 0;
+        while (offset < count)
         {
-            /* write data in a loop until we block */
-            nwritten = libssh2_sftp_write(sftp_handle_, ptr, nread);
-            if (nwritten < 0)
+            const auto written = libssh2_sftp_write(sftp_handle_, buffer + offset, count - offset);
+            if (written <= 0)
             {
-                logging(logLevel::err, std::format("file transfer failed err {}", nwritten));
-                disconnect_sftp();
-                fclose(local);
-                return false;
-            }
-            if (nwritten < 0)
+                success = false;
                 break;
-            ptr += nwritten;
-            nread -= (size_t)nwritten;
-        } while (nread);
-    } while (nwritten > 0);
-
-    if (sftp_handle_)
-    {
-        libssh2_sftp_close(sftp_handle_);
-        sftp_handle_ = nullptr;
+            }
+            offset += static_cast<size_t>(written);
+        }
+        if (!success)
+            break;
     }
-
+    success = success && !ferror(local);
     fclose(local);
+    const int closeResult = libssh2_sftp_close(sftp_handle_);
+    sftp_handle_ = nullptr;
+    success = success && closeResult == 0;
+    if (!success)
+    {
+        logging(logLevel::err, "File transfer failed: " + source);
+        disconnect_sftp();
+    }
+    return success;
+}
 
-    return rt != 0;
+bool sftpController::transfer_pending_images(const std::filesystem::path &imageDirectory,
+                                              const std::filesystem::path &remoteDirectory)
+{
+    std::vector<std::filesystem::path> pending;
+    for (const auto &entry : std::filesystem::directory_iterator(imageDirectory))
+    {
+        const auto &path = entry.path();
+        if (entry.is_regular_file() && path.extension() == ".jpg" &&
+            !std::filesystem::exists(path.string() + ".sent"))
+        {
+            pending.push_back(path);
+        }
+    }
+    // Timestamped filenames sort from oldest to newest. Snapshot once per run.
+    std::sort(pending.begin(), pending.end());
+    for (const auto &path : pending)
+    {
+        if (!transfer(path.string(), (remoteDirectory / path.filename()).string()))
+            return false; // Leave this and remaining images pending for the next run.
+
+        std::ofstream marker(path.string() + ".sent");
+        marker << "sent\n";
+        marker.close();
+        if (!marker)
+        {
+            logging(logLevel::err, "Cannot record upload for " + path.string());
+            std::error_code error;
+            std::filesystem::remove(path.string() + ".sent", error);
+            return false;
+        }
+        logging(logLevel::info, "Image sent: " + path.filename().string());
+    }
+    return true;
 }
 
 void sftpController::logging(std::string_view loggingLevel, std::string msg)

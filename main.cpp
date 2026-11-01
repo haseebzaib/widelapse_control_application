@@ -71,8 +71,8 @@ int main()
     schedulingController transferScheduler("transferScheduler");
 
     // Example camera window: Monday and Tuesday, 09:00 <= time < 17:00.
-    cameraScheduler.add_profile({"camera", {1, 2}, hours(9), hours(17), minutes(5), capture});
-    transferScheduler.add_profile({"transfer", {}, hours(0), hours(24), minutes(10), transfer});
+    cameraScheduler.add_profile({"camera", {}, hours(0), hours(24), minutes(1), capture});
+    transferScheduler.add_profile({"transfer", {}, hours(0), hours(24), minutes(2), transfer});
 
     std::cout << "Schedules running. Commands: capture, summary, exit\n";
     std::string command;

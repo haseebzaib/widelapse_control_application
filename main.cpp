@@ -1,6 +1,7 @@
 #include "cameraController/cameraController.hpp"
 #include "sftpController/sftpController.hpp"
 #include "schedulingController/schedulingController.hpp"
+#include "utils/diagnostic.hpp"
 #include <chrono>
 #include <ctime>
 #include <filesystem>
@@ -8,6 +9,9 @@
 #include <iostream>
 #include <mutex>
 #include <string>
+
+
+diagnostic::systemDiagnostic systemInfo;
 
 std::string get_image_name_with_timestamp()
 {
@@ -87,6 +91,10 @@ int main()
         else if (command == "exit")
         {
             break;
+        }
+        else if (command == "systeminfo")
+        {
+            diagnostic::get_info(systemInfo);
         }
     }
     return 0;

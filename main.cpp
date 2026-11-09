@@ -1,6 +1,7 @@
 #include "cameraController/cameraController.hpp"
 #include "sftpController/sftpController.hpp"
 #include "schedulingController/schedulingController.hpp"
+#include "cloudController/mqttController.hpp"
 #include "utils/diagnostic.hpp"
 #include <chrono>
 #include <ctime>
@@ -36,6 +37,10 @@ int main()
     std::mutex cameraMutex;
     const std::filesystem::path imageDirectory = "/opt/widelapse/images";
     const std::filesystem::path remoteDirectory = "/media/newc2ae86228-projcde50db9-came935a3401";
+    
+    cloudController::mqttController::init();
+    
+    
     std::filesystem::create_directories(imageDirectory);
 
     const auto capture = [&]
@@ -71,8 +76,8 @@ int main()
     schedulingController transferScheduler("transferScheduler");
 
     // Example camera window: Monday and Tuesday, 09:00 <= time < 17:00.
-    cameraScheduler.add_profile({"camera", {}, hours(0), hours(24), minutes(1), capture});
-    transferScheduler.add_profile({"transfer", {}, hours(0), hours(24), minutes(2), transfer});
+    cameraScheduler.add_profile({"camera", {}, hours(0), hours(24), minutes(30), capture});
+    transferScheduler.add_profile({"transfer", {}, hours(0), hours(24), minutes(30), transfer});
 
     std::cout << "Schedules running. Commands: capture, summary, exit\n";
     std::string command;

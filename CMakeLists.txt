@@ -9,6 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(PkgConfig REQUIRED)
 find_package(Threads REQUIRED)
+find_package(PahoMqttCpp REQUIRED)
 
 pkg_check_modules(GPHOTO2 REQUIRED IMPORTED_TARGET libgphoto2)
 pkg_check_modules(LIBSSH2 REQUIRED IMPORTED_TARGET libssh2)
@@ -27,6 +28,7 @@ ${CMAKE_CURRENT_SOURCE_DIR}
 add_subdirectory(cameraController)
 add_subdirectory(sftpController)
 add_subdirectory(schedulingController)
+add_subdirectory(cloudController)
 add_subdirectory(utils)
 
 target_link_libraries(controlApp
@@ -34,6 +36,7 @@ PRIVATE
      PkgConfig::GPHOTO2
      PkgConfig::LIBSSH2
      Threads::Threads
+     PahoMqttCpp::paho-mqttpp3
 )
 include(CTest)
 if(BUILD_TESTING)

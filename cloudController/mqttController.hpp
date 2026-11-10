@@ -18,9 +18,13 @@ namespace cloudController
 
         const std::string serverUri("mqtt://broker.hivemq.com:1883");
         const std::string serverPort("1883");
-        const std::string subTopic("widelapse/1");
+        const std::string pubTopicRegistration("widelapse/registration"); //registration topic
+        const std::string subTopicRegistration("widelapse/registration/1");
         const int qos = 1;
         const int n_retry_attempts = 5;
+        const int publishTimeout = 10000;
+        const int registrationInterval = 10; //in seconds
+        const int regularUpdateInterval = 60; //inseconds
 
         
 

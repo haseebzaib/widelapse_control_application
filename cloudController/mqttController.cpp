@@ -1,7 +1,13 @@
 #include "mqttController.hpp"
+#include "mqttMessageTemplates.hpp"
 #include "utils/utils.hpp"
+#include "utils/diagnostic.hpp"
+#include <fstream>
+#include <utils/nlohmann/json.hpp>
 #include <memory>
 #include <cstdlib>
+#include <queue>
+#include <mutex>
 
 namespace cloudController
 {
@@ -19,8 +25,15 @@ namespace cloudController
         static std::jthread mqttWorker_;
         static std::unique_ptr<mqtt::async_client> mqttAsyncClient;
         static mqtt::connect_options connOpts;
-
         static std::string clientId;
+
+        static std::queue<std::string> mqttQueue;
+        static bool contRegis = true;
+
+        using json = nlohmann::json;
+
+        static std::string pubTopicNetworkInformation = "widelapse/network/";       // clientId in the end
+        static std::string pubTopicDiagnosticInformation = "widelapse/diagnostic/"; // clientId in the end
 
         static void logging(std::string_view loggingLevel, std::string msg)
         {
@@ -81,7 +94,7 @@ namespace cloudController
                 catch (const mqtt::exception &exc)
                 {
                     logging(logLevel::err, std::format("reconnect: Error: {}", exc.what()));
-                    exit(1);
+                    // exit(1);
                 }
             }
 
@@ -89,8 +102,8 @@ namespace cloudController
             void on_failure(const mqtt::token &tok) override
             {
                 logging(logLevel::err, "CB: Connection attempt failed");
-                if (++nretry_ > n_retry_attempts)
-                    exit(1);
+                // if (++nretry_ > n_retry_attempts)
+                //     exit(1);
                 reconnect();
             }
 
@@ -104,7 +117,7 @@ namespace cloudController
 
                 logging(logLevel::info, "CB: connection success");
 
-                cli_.subscribe(subTopic, qos, nullptr, subListener_);
+                cli_.subscribe(subTopicRegistration, qos, nullptr, subListener_);
             }
 
             // Callback for when the connection is lost.
@@ -129,6 +142,20 @@ namespace cloudController
                 logging(logLevel::info, "CB: Message Arrived");
                 logging(logLevel::info, std::format("CB: \ttopic: {}", msg->get_topic()));
                 logging(logLevel::info, std::format("CB: \tpayload: {}", msg->to_string()));
+
+                if (msg->get_topic() == subTopicRegistration)
+                {
+                    json data = json::parse(msg->to_string());
+                    std::string deviceId_ = data.value("deviceId", "");
+                    if (deviceId_ == clientId)
+                    {
+                        std::string resp_ = data.value("resp", "");
+                        if (resp_ == "ack")
+                        {
+                            contRegis = false;
+                        }
+                    }
+                }
             }
 
             void delivery_complete(mqtt::delivery_token_ptr token) override {}
@@ -141,6 +168,13 @@ namespace cloudController
         };
 
         static std::unique_ptr<callback> mqttCallback;
+
+        static void publish_data(int qos, std::string topic, std::string message)
+        {
+            mqtt::message_ptr pubmsg = mqtt::make_message(topic, message);
+            pubmsg->set_qos(qos);
+            mqttAsyncClient->publish(pubmsg)->wait_for(std::chrono::milliseconds(publishTimeout));
+        }
 
         static void
         generate_client_id()
@@ -159,16 +193,22 @@ namespace cloudController
             mac.erase(std::remove(mac.begin(), mac.end(), ':'), mac.end());
             clientId += mac;
             logging(logLevel::info, std::format("MQTT clientID: {}", clientId));
+
+            // create topics for pub immediately here
+
+            pubTopicDiagnosticInformation += clientId;
+            pubTopicNetworkInformation += clientId;
+
+            logging(logLevel::info, std::format("Pub Topics: {}:{}", pubTopicDiagnosticInformation, pubTopicNetworkInformation));
         }
 
         static void mqtt_init()
         {
 
-            generate_client_id();
-
             mqttAsyncClient = std::make_unique<mqtt::async_client>(serverUri, clientId);
             connOpts.set_clean_session(true);
             connOpts.set_keep_alive_interval(30);
+            connOpts.set_connect_timeout(10);
 
             mqttCallback = std::make_unique<callback>(
                 *mqttAsyncClient,
@@ -192,16 +232,41 @@ namespace cloudController
 
         static void mqtt_thread(std::stop_token stopToken)
         {
+            std::chrono::system_clock::time_point previousIntervalReg;
+            std::chrono::system_clock::time_point previousIntervalregularUpdate;
+            generate_client_id();
             mqtt_init();
 
             while (!stopToken.stop_requested())
             {
-
-                logging(logLevel::info, "working every second");
+                auto now = std::chrono::system_clock::now();
 
                 if (mqttAsyncClient && mqttAsyncClient->is_connected())
                 {
                     logging(logLevel::info, "MQTT Connected");
+                    if (contRegis == true && (now - previousIntervalReg >= std::chrono::seconds(registrationInterval)))
+                    {
+                        json registration_ = mqttMessageTemplates::registration();
+                        registration_["deviceId"] = clientId;
+                        registration_["deviceType"] = "gateway";
+                        std::string payload = registration_.dump();
+                        publish_data(qos, pubTopicRegistration, payload);
+                        previousIntervalReg = now;
+                    }
+
+                    if (contRegis == false)
+                    {
+                        if ((now - previousIntervalregularUpdate >= std::chrono::seconds(regularUpdateInterval)))
+                        {
+                            previousIntervalregularUpdate = now;
+                            json data_ = utils::getNetworkInfo();
+                            std::string payload = data_.dump();
+                            publish_data(qos, pubTopicNetworkInformation, payload);
+                            data_ = diagnostic::get_info_json();
+                            payload = data_.dump();
+                            publish_data(qos, pubTopicDiagnosticInformation, payload);
+                        }
+                    }
                 }
                 else
                 {

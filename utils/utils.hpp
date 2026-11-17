@@ -14,4 +14,6 @@ namespace utils
     std::string get_ethernet_mac();
 
     nlohmann::json getNetworkInfo();
+
+    bool reload_network();
 }

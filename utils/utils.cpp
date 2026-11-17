@@ -40,7 +40,7 @@ namespace utils
         return nlohmann::json::parse(output);
     }
 
-    bool reloadNetwork()
+    bool reload_network()
     {
         int status = std::system(
             "/usr/local/bin/widelapse-network --reload");

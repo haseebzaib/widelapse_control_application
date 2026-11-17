@@ -22,7 +22,7 @@ namespace cloudController
         // const std::string userName("widelapse_device");
         // const std::string passWord("WidelapseDev@2026");
 
-        const std::string serverUri("mqtt:// broker.hivemq.com :1883");
+        const std::string serverUri("mqtt://broker.hivemq.com:1883");
         const std::string serverPort("1883");
 
         const std::string pubTopicRegistration("widelapse/registration"); // registration topic

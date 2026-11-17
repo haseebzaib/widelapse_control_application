@@ -1,4 +1,5 @@
 #include "mqttController.hpp"
+#include "mqttRemoteCommand.hpp"
 #include "mqttMessageTemplates.hpp"
 #include "utils/utils.hpp"
 #include "utils/diagnostic.hpp"
@@ -28,13 +29,15 @@ namespace cloudController
         static mqtt::ssl_options sslOpts;
         static std::string clientId;
 
-        static std::queue<std::string> mqttQueue;
+        static std::queue<std::string> mqttRemoteCmdQueue;
         static bool contRegis = true;
 
         using json = nlohmann::json;
 
         static std::string pubTopicNetworkInformation = "widelapse/network/";       // clientId in the end
         static std::string pubTopicDiagnosticInformation = "widelapse/diagnostic/"; // clientId in the end
+        static std::string subTopicRemoteCommands = "widelapse/remoteCommands/0/";  // clientId in the end
+        static std::string pubTopicRemoteCommands = "widelapse/remoteCommands/1/";  // clientId in the end
 
         static void logging(std::string_view loggingLevel, std::string msg)
         {
@@ -102,9 +105,9 @@ namespace cloudController
             // Re-connection failure
             void on_failure(const mqtt::token &tok) override
             {
-                
+
                 logging(logLevel::err, std::format("CB: Connection attempt failed {}", tok.get_return_code()));
-               
+
                 // if (++nretry_ > n_retry_attempts)
                 //     exit(1);
                 reconnect();
@@ -121,6 +124,10 @@ namespace cloudController
                 logging(logLevel::info, "CB: connection success");
 
                 cli_.subscribe(subTopicRegistration, qos, nullptr, subListener_);
+                subTopicRemoteCommands += clientId;
+                cli_.subscribe(subTopicRemoteCommands, qos, nullptr, subListener_);
+
+                logging(logLevel::info, std::format("CB: subscribed to topics {}:{}", subTopicRegistration, subTopicRemoteCommands));
             }
 
             // Callback for when the connection is lost.
@@ -158,6 +165,10 @@ namespace cloudController
                             contRegis = false;
                         }
                     }
+                }
+                if (msg->get_topic() == subTopicRemoteCommands)
+                {
+                    mqttRemoteCmdQueue.push(msg->to_string());
                 }
             }
 
@@ -201,8 +212,38 @@ namespace cloudController
 
             pubTopicDiagnosticInformation += clientId;
             pubTopicNetworkInformation += clientId;
+            pubTopicRemoteCommands += clientId;
 
-            logging(logLevel::info, std::format("Pub Topics: {}:{}", pubTopicDiagnosticInformation, pubTopicNetworkInformation));
+            logging(logLevel::info, std::format("Pub Topics: {}:{}:{}", pubTopicDiagnosticInformation, pubTopicNetworkInformation, pubTopicRemoteCommands));
+        }
+
+       
+
+        static void remote_commands()
+        {
+            /**if not empty go inside */
+            if (!mqttRemoteCmdQueue.empty())
+            {
+                std::string payload_;
+                json cmd_ = json::parse(mqttRemoteCmdQueue.front());
+
+                std::string cmdType_ = cmd_.value("cmdType","");
+
+                auto itCmd = mqttRemoteCommand::get_commands_callbacks();
+
+                auto foundCmd = itCmd.find(cmdType_);
+
+                if(foundCmd != itCmd.end())
+                {
+                    foundCmd->second(cmd_);
+                }
+                else
+                {
+                     logging(logLevel::info, "unknown command");
+                }
+
+                mqttRemoteCmdQueue.pop(); // remove front element so we dont read again
+            }
         }
 
         static void mqtt_init()
@@ -215,9 +256,9 @@ namespace cloudController
             connOpts.set_clean_session(true);
             connOpts.set_keep_alive_interval(30);
             connOpts.set_connect_timeout(10);
-            connOpts.set_user_name(userName);
-            connOpts.set_password(passWord);
-            connOpts.set_ssl(sslOpts);
+            // connOpts.set_user_name(userName);
+            // connOpts.set_password(passWord);
+            // connOpts.set_ssl(sslOpts);
 
             mqttCallback = std::make_unique<callback>(
                 *mqttAsyncClient,
@@ -275,6 +316,9 @@ namespace cloudController
                             payload = data_.dump();
                             publish_data(qos, pubTopicDiagnosticInformation, payload);
                         }
+
+
+                        remote_commands();
                     }
                 }
                 else
@@ -299,6 +343,13 @@ namespace cloudController
             {
                 mqttWorker_.join();
             }
+        }
+
+        void remote_command_publish(std::string message)
+        {
+            mqtt::message_ptr pubmsg = mqtt::make_message(pubTopicRemoteCommands, message);
+            pubmsg->set_qos(1);
+            mqttAsyncClient->publish(pubmsg)->wait_for(std::chrono::milliseconds(publishTimeout));
         }
 
     }

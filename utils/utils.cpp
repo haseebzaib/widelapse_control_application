@@ -1,4 +1,5 @@
 #include "utils.hpp"
+#include <cstdlib>
 
 namespace utils
 {
@@ -39,4 +40,19 @@ namespace utils
         return nlohmann::json::parse(output);
     }
 
+    bool reloadNetwork()
+    {
+        int status = std::system(
+            "/usr/local/bin/widelapse-network --reload");
+
+        if (status != 0)
+        {
+            // logging("Failed to reload network");
+            return false;
+        }
+
+        // logging("Network reloaded successfully");
+
+        return true;
+    }
 }

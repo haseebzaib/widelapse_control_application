@@ -25,6 +25,7 @@ namespace cloudController
         static std::jthread mqttWorker_;
         static std::unique_ptr<mqtt::async_client> mqttAsyncClient;
         static mqtt::connect_options connOpts;
+        static mqtt::ssl_options sslOpts;
         static std::string clientId;
 
         static std::queue<std::string> mqttQueue;
@@ -101,7 +102,9 @@ namespace cloudController
             // Re-connection failure
             void on_failure(const mqtt::token &tok) override
             {
-                logging(logLevel::err, "CB: Connection attempt failed");
+                
+                logging(logLevel::err, std::format("CB: Connection attempt failed {}", tok.get_return_code()));
+               
                 // if (++nretry_ > n_retry_attempts)
                 //     exit(1);
                 reconnect();
@@ -206,9 +209,15 @@ namespace cloudController
         {
 
             mqttAsyncClient = std::make_unique<mqtt::async_client>(serverUri, clientId);
+
+            sslOpts.ca_path(trustStore);
+
             connOpts.set_clean_session(true);
             connOpts.set_keep_alive_interval(30);
             connOpts.set_connect_timeout(10);
+            connOpts.set_user_name(userName);
+            connOpts.set_password(passWord);
+            connOpts.set_ssl(sslOpts);
 
             mqttCallback = std::make_unique<callback>(
                 *mqttAsyncClient,

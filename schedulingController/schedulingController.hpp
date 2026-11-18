@@ -27,7 +27,7 @@ public:
         // Overnight windows are not supported; use two profiles instead.
         std::chrono::minutes startTime;
         std::chrono::minutes endTime;
-        std::chrono::minutes interval;
+        std::chrono::seconds interval;
         std::function<void()> callBack;
     };
 

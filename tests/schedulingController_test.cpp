@@ -21,7 +21,7 @@ int main()
         schedulingController slow("slow");
         schedulingController fast("fast");
         auto invalid = schedulingController::scheduleProfile{
-            "invalid", {}, hours(0), hours(24), minutes(0), [] {}};
+            "invalid", {}, hours(0), hours(24), seconds(0), [] {}};
         const auto rejected = [&](auto profile)
         {
             try { fast.add_profile(profile); }
@@ -53,7 +53,7 @@ int main()
         {
             ++runs;
             slowStarted = true;
-            slow.add_profile({"added callback", {}, hours(0), hours(24), minutes(1), [&]
+            slow.add_profile({"added callback", {}, hours(0), hours(24), seconds(30), [&]
             {
                 addedRan = true;
                 changed.notify_all();

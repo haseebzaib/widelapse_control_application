@@ -22,7 +22,7 @@ schedulingController::~schedulingController()
 void schedulingController::add_profile(scheduleProfile profile)
 {
     using namespace std::chrono;
-    if (!profile.callBack || profile.interval <= minutes::zero() ||
+    if (!profile.callBack || profile.interval <= seconds::zero() ||
         profile.startTime < minutes::zero() || profile.endTime > hours(24) ||
         profile.startTime >= profile.endTime ||
         std::any_of(profile.weekDays.begin(), profile.weekDays.end(),
@@ -46,7 +46,7 @@ void schedulingController::add_profile(scheduleProfile profile)
 
     logging(logLevel::info,
             std::format("profile added: name={}, weekdays=[{}], start={:02}:{:02}, "
-                        "end={:02}:{:02}, interval={} minutes, callback=set",
+                        "end={:02}:{:02}, interval={} seconds, callback=set",
                         addedProfile.name, weekDays,
                         addedProfile.startTime.count() / 60, addedProfile.startTime.count() % 60,
                         addedProfile.endTime.count() / 60, addedProfile.endTime.count() % 60,

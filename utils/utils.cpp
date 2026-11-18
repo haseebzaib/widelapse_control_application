@@ -1,5 +1,9 @@
 #include "utils.hpp"
 #include <cstdlib>
+#include <fstream>
+#include <filesystem>
+
+
 
 namespace utils
 {
@@ -54,5 +58,44 @@ namespace utils
         // logging("Network reloaded successfully");
 
         return true;
+    }
+    bool save_json(const std::string &path, const nlohmann::json &data)
+    {
+        try {
+            std::filesystem::path filePath(path);
+
+            //create or overwrite the file
+            std::ofstream file(path, std::ios::trunc);
+            if(!file.is_open())
+            {
+                return false;
+            }
+            file << data.dump(4);
+            file.close();
+            return !file.fail();
+
+        }
+        catch (const std::exception &e) {
+            std::cerr << e.what() << "\n";
+
+            return false;
+        }
+    }
+    nlohmann::json read_json(const std::string &path)
+    {
+        try {
+            std::ifstream file(path);
+            if(!file.is_open())
+            {
+              return nullptr;
+            }
+            nlohmann::json fileData = nlohmann::json::parse(file);
+            file.close();
+            return fileData;
+        }
+        catch(const std::exception &e) {
+            std::cerr << e.what() << "\n";
+            return nullptr;
+        }
     }
 }

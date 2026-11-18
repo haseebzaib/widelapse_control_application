@@ -53,6 +53,13 @@ void schedulingController::add_profile(scheduleProfile profile)
                         addedProfile.interval.count()));
 }
 
+void schedulingController::clear_profiles()
+{
+    std::lock_guard lock(profilesMutex_);
+    profiles_.clear();
+    logging(logLevel::info, "profiles cleared");
+}
+
 void schedulingController::scheduler_loop(std::stop_token stopToken)
 {
     using namespace std::chrono;

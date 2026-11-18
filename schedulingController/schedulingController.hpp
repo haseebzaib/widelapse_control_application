@@ -33,6 +33,7 @@ public:
 
     // Throws std::invalid_argument for an invalid profile.
     void add_profile(scheduleProfile profile);
+    void clear_profiles();
 
 private:
     struct scheduledProfile

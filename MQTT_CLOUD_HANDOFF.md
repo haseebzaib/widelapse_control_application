@@ -139,4 +139,144 @@ Topic: `widelapse/diagnostic/widelapse_aabbccddeeff`
 
 CPU temperatures are in degrees Celsius. RAM and storage values are in MiB. `rootfs` reports `/`, and `application` reports the filesystem containing `/opt/widelapse`. Storage `free` is the space available to an unprivileged user, so `used + free` may not equal `total`.
 
-For this first stage, the backend needs to register devices, send the registration acknowledgement, and store incoming network and diagnostic updates against each device.
+## Remote commands
+
+The cloud can send Wi-Fi settings and capture/transfer schedules to a registered device. Both commands use the same topics:
+
+| Direction | Topic |
+| --- | --- |
+| Cloud → device: command | `widelapse/remoteCommands/0/<clientId>` |
+| Device → cloud: result | `widelapse/remoteCommands/1/<clientId>` |
+
+For example, publish commands for `widelapse_aabbccddeeff` to `widelapse/remoteCommands/0/widelapse_aabbccddeeff` and listen for results on `widelapse/remoteCommands/1/widelapse_aabbccddeeff`. The backend can subscribe to `widelapse/remoteCommands/1/+` for all devices.
+
+Subscribe for results before sending a command. Publish with QoS 1 and retain disabled so old commands are not replayed when a device connects. The device subscribes and replies at QoS 1, with replies not retained. Commands are processed after registration is acknowledged.
+
+Requests contain `cmdType` and `cmdData`. Replies return the same `cmdType`, with `status` and `reason` inside `cmdData`. Command names are case-sensitive: use exactly `wifiSetup` and `scheduling_setup`.
+
+There is no request ID in the current format. Send one command at a time per device and wait for its result before sending the next. A broker delivery acknowledgement does not confirm that a command was applied; use the device's result message. If no result arrives, keep the outcome as unknown. Unknown command names currently receive no reply.
+
+### Wi-Fi setup
+
+Send this payload on the command topic:
+
+```json
+{
+  "cmdType": "wifiSetup",
+  "cmdData": {
+    "ssid": "Site-WiFi",
+    "password": "example-password"
+  }
+}
+```
+
+Both `ssid` and `password` are required strings. The device replaces the first saved Wi-Fi network's credentials and requests a network reload.
+
+Success reply on the result topic:
+
+```json
+{
+  "cmdType": "wifiSetup",
+  "cmdData": {
+    "status": "success",
+    "reason": ""
+  }
+}
+```
+
+Failure reply:
+
+```json
+{
+  "cmdType": "wifiSetup",
+  "cmdData": {
+    "status": "failure",
+    "reason": "Unable to update WiFi configuration"
+  }
+}
+```
+
+A success response confirms that the settings were saved. It does not confirm that Wi-Fi connected or has internet access; the current handler does not check the reload result. Use subsequent network updates to check `links.wifi.connected` and `links.wifi.internet`. Reloading the network may interrupt MQTT, so the reply may not reach the cloud immediately.
+
+### Scheduling setup
+
+This command replaces the complete schedule for both camera capture and SFTP transfers. Always send every profile that should remain active, including profiles that have not changed. If no `transfer` profiles are included, existing transfer profiles are removed; the same applies to `camera` profiles.
+
+Example: capture every 60 seconds and transfer pending images every 300 seconds, Monday to Friday, from 08:00 up to 18:00 in the device's local timezone.
+
+```json
+{
+  "cmdType": "scheduling_setup",
+  "cmdData": {
+    "schedule": [
+      {
+        "type": "camera",
+        "weekDays": [1, 2, 3, 4, 5],
+        "startTime": 480,
+        "endTime": 1080,
+        "interval": 60
+      },
+      {
+        "type": "transfer",
+        "weekDays": [1, 2, 3, 4, 5],
+        "startTime": 480,
+        "endTime": 1080,
+        "interval": 300
+      }
+    ]
+  }
+}
+```
+
+Each profile requires these fields:
+
+| Field | Value |
+| --- | --- |
+| `type` | `"camera"` for image capture or `"transfer"` for SFTP transfer |
+| `weekDays` | Array of integers: Sunday = `0`, Monday = `1`, through Saturday = `6`. Use `[-1]` or `[]` for every day. Do not combine `-1` with other days. |
+| `startTime` | Integer minutes since midnight, `0`–`1439`, inclusive |
+| `endTime` | Integer minutes since midnight, `1`–`1440`, exclusive |
+| `interval` | Positive integer seconds, up to `2147483647` |
+
+Use `weekDays` exactly as written, including the capital `D`. Times use the device's local timezone. `startTime` must be less than `endTime`; `0` to `1440` covers a full day. Split overnight windows into two profiles, assigning the second profile to the following day where needed.
+
+The scheduler runs a profile when it first becomes active, then repeats at its interval while the window remains active. A newly applied profile can therefore run on the next scheduler check if the current time falls inside its window.
+
+The device validates the complete list before saving it and replacing the active profiles. The saved schedule is loaded again when the application starts. Invalid input is rejected before changing the existing schedule.
+
+Success reply:
+
+```json
+{
+  "cmdType": "scheduling_setup",
+  "cmdData": {
+    "status": "success",
+    "reason": ""
+  }
+}
+```
+
+Failure reply example:
+
+```json
+{
+  "cmdType": "scheduling_setup",
+  "cmdData": {
+    "status": "failure",
+    "reason": "startTime must be less than endTime"
+  }
+}
+```
+
+Failure reasons vary; display or log the returned `reason`. Success confirms that the schedule was saved and applied, rather than confirming that a capture or transfer completed.
+
+To clear all camera and transfer schedules, send:
+
+```json
+{
+  "cmdType": "scheduling_setup",
+  "cmdData": {
+    "schedule": []
+  }
+}
+```

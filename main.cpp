@@ -2,6 +2,7 @@
 #include "sftpController/sftpController.hpp"
 #include "schedulingController/schedulingController.hpp"
 #include "cloudController/mqttController.hpp"
+#include "cloudController/mqttRemoteCommand.hpp"
 #include "utils/diagnostic.hpp"
 #include <chrono>
 #include <ctime>
@@ -38,7 +39,7 @@ int main()
     const std::filesystem::path imageDirectory = "/opt/widelapse/images";
     const std::filesystem::path remoteDirectory = "/media/newc2ae86228-projcde50db9-came935a3401";
     
-    cloudController::mqttController::init();
+
     
     
     std::filesystem::create_directories(imageDirectory);
@@ -75,9 +76,15 @@ int main()
     schedulingController cameraScheduler("cameraScheduler");
     schedulingController transferScheduler("transferScheduler");
 
-    // Example camera window: Monday and Tuesday, 09:00 <= time < 17:00.
-    cameraScheduler.add_profile({"camera", {}, hours(0), hours(24), minutes(30), capture});
-    transferScheduler.add_profile({"transfer", {}, hours(0), hours(24), minutes(30), transfer});
+    cloudController::mqttRemoteCommand::init_scheduling(
+        cameraScheduler, transferScheduler, capture, transfer);
+
+    // Stop MQTT before destroying schedulers referenced by the command handler.
+    struct mqttLifetime
+    {
+        mqttLifetime() { cloudController::mqttController::init(); }
+        ~mqttLifetime() { cloudController::mqttController::stop(); }
+    } mqtt;
 
     std::cout << "Schedules running. Commands: capture, summary, exit\n";
     std::string command;

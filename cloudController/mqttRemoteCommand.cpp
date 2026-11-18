@@ -3,6 +3,8 @@
 #include "mqttMessageTemplates.hpp"
 #include <fstream>
 #include <filesystem>
+#include <limits>
+#include <utility>
 #include "utils/utils.hpp"
 #include "schedulingController/schedulingController.hpp"
 
@@ -111,65 +113,145 @@ namespace cloudController
             mqttController::remote_command_publish(reply.dump());
         }
 
-        static void scheduling_setup(const nlohmann::json &data)
+        static schedulingController *cameraScheduler_ = nullptr;
+        static schedulingController *transferScheduler_ = nullptr;
+        static std::function<void()> capture_;
+        static std::function<void()> transfer_;
+        static std::string schedulingPath_;
+
+        static int schedule_integer(const nlohmann::json &object, const char *key,
+                                    int minimum, int maximum)
         {
-            /**
+            const auto &value = object.at(key);
+            if (!value.is_number_integer() || value < minimum || value > maximum)
+                throw std::invalid_argument(std::string("Invalid schedule field: ") + key);
+            return value.get<int>();
+        }
 
-            * cmdData contains the complete replacement schedule.
-            * Validate the entire list before replacing the current schedule.
-            * An empty schedule array clears all profiles.
-            *
-            * schedule: array of objects containing:
-            *   type:      "camera" or "transfer"
-            *   weekDays:  array of integers, Sunday=0 through Saturday=6
-            *              -1 means every day
-            *   startTime: integer minutes since midnight, 0..1439
-            *   endTime:   integer minutes since midnight, 1..1440
-            *   interval:  positive integer seconds
-            *
-            * startTime is inclusive; endTime is exclusive.
-            * startTime must be less than endTime.
-            * All weekday/time windows use the device's local timezone.
-            * Overnight windows require two profiles.
+        static void apply_schedules(const nlohmann::json &data, bool save)
+        {
+            using namespace std::chrono;
+            if (!cameraScheduler_ || !transferScheduler_ || !capture_ || !transfer_)
+                throw std::runtime_error("Scheduling callbacks are not initialized");
 
+            const auto &schedules = data.at("cmdData").at("schedule");
+            if (!schedules.is_array())
+                throw std::invalid_argument("schedule must be an array");
 
-             * cmdData {
-             * "schedule" : [
-             *   {
-             *     "type" : "camera/transfer", //currently there are two types camera profile or sftp transfer whatever want to set according to that profile camera or sftp transfer happens
-             *     "weekDay" : <int>,//  -1 = everyday Local time: Sunday = 0, Monday = 1, ... Saturday = 6. Empty = every day.
-             *      // Start inclusive, end exclusive. 00:00 to 24:00 means all day.
-                    // Overnight windows are not supported; use two profiles instead.
-             *     "startTime" : <int>,
-                   "endTime" : <int>,
-                   "interval" : <int>
-             *
-             *   },
-             *   {
-             *      // and other time if want for example in hour 22-23 need to take pic with interval 1
-             *   },
-             * ]
-
-             * }
-             */
-
-            logging(logLevel::info, "inside scheduling setup cb");
-            const std::string path = "/opt/widelapse/configs/scheduling.json";
-            nlohmann::json reply = mqttMessageTemplates::remoteCommand();
-            reply["cmdType"] = data["cmdType"];
-            reply["cmdData"] = {
-                {"status", "success"},
-                {"reason", ""}};
-
-            int scheduleJsonSize = data.at("cmdData").at("schedule").size();
-            logging(logLevel::info, std::format("number of schedules {}", scheduleJsonSize));
-
-            for(int i = 0; i<5; i++)
+            std::vector<schedulingController::scheduleProfile> cameraProfiles;
+            std::vector<schedulingController::scheduleProfile> transferProfiles;
+            // Build and validate every profile before changing the file or live schedules.
+            for (const auto &item : schedules)
             {
-              
+                const auto type = item.at("type").get<std::string>();
+                if (type != "camera" && type != "transfer")
+                    throw std::invalid_argument("Schedule type must be camera or transfer");
+
+                const auto &days = item.at("weekDays");
+                if (!days.is_array())
+                    throw std::invalid_argument("weekDays must be an array");
+                std::vector<std::uint8_t> weekDays;
+                for (const auto &day : days)
+                {
+                    if (!day.is_number_integer() || day < -1 || day > 6)
+                        throw std::invalid_argument("Weekday must be -1 or 0 through 6");
+                    const int weekday = day.get<int>();
+                    if (weekday == -1)
+                    {
+                        if (days.size() != 1)
+                            throw std::invalid_argument("Use [-1] alone for every day");
+                        // Empty internal weekday vector means every day.
+                    }
+                    else
+                        weekDays.push_back(static_cast<std::uint8_t>(weekday));
+                }
+
+                const int start = schedule_integer(item, "startTime", 0, 1439);
+                const int end = schedule_integer(item, "endTime", 1, 1440);
+                const int interval = schedule_integer(item, "interval", 1, std::numeric_limits<int>::max());
+                if (start >= end)
+                    throw std::invalid_argument("startTime must be less than endTime");
+
+                schedulingController::scheduleProfile profile{
+                    type, weekDays, minutes(start), minutes(end), seconds(interval),
+                    type == "camera" ? capture_ : transfer_};
+                if (type == "camera")
+                    cameraProfiles.push_back(std::move(profile));
+                else
+                    transferProfiles.push_back(std::move(profile));
             }
 
+            if (save)
+            {
+                const std::filesystem::path path(schedulingPath_);
+                if (!path.parent_path().empty())
+                    std::filesystem::create_directories(path.parent_path());
+                const auto temporaryPath = schedulingPath_ + ".tmp";
+                if (!utils::save_json(temporaryPath, data))
+                {
+                    std::error_code error;
+                    std::filesystem::remove(temporaryPath, error);
+                    throw std::runtime_error("Unable to save scheduling.json");
+                }
+                // Keep the previous saved file intact until the replacement is written.
+                std::filesystem::rename(temporaryPath, path);
+            }
 
+            cameraScheduler_->clear_profiles();
+            transferScheduler_->clear_profiles();
+            for (auto &profile : cameraProfiles)
+                cameraScheduler_->add_profile(std::move(profile));
+            for (auto &profile : transferProfiles)
+                transferScheduler_->add_profile(std::move(profile));
+            logging(logLevel::info, std::format("schedules applied: camera={}, transfer={}",
+                                                cameraProfiles.size(), transferProfiles.size()));
+        }
+
+        void init_scheduling(schedulingController &cameraScheduler,
+                             schedulingController &transferScheduler,
+                             std::function<void()> capture,
+                             std::function<void()> transfer,
+                             std::string path)
+        {
+            cameraScheduler_ = &cameraScheduler;
+            transferScheduler_ = &transferScheduler;
+            capture_ = std::move(capture);
+            transfer_ = std::move(transfer);
+            schedulingPath_ = std::move(path);
+
+            const auto saved = utils::read_json(schedulingPath_);
+            if (saved.is_null())
+            {
+                logging(logLevel::warn, "No readable scheduling.json; waiting for scheduling_setup");
+                return;
+            }
+            try
+            {
+                apply_schedules(saved, false);
+            }
+            catch (const std::exception &error)
+            {
+                logging(logLevel::err, std::string("Cannot load scheduling.json: ") + error.what());
+            }
+        }
+
+        static void scheduling_setup(const nlohmann::json &data)
+        {
+            // Full replacement: times are minutes since midnight, intervals are seconds.
+            // weekDays: [-1] or [] means every day; otherwise use Sunday=0 ... Saturday=6.
+            logging(logLevel::info, "inside scheduling setup cb");
+            nlohmann::json reply = mqttMessageTemplates::remoteCommand();
+            reply["cmdType"] = "scheduling_setup";
+            try
+            {
+                apply_schedules(data, true);
+                reply["cmdData"] = {{"status", "success"}, {"reason", ""}};
+            }
+            catch (const std::exception &error)
+            {
+                logging(logLevel::err, error.what());
+                reply["cmdData"] = {{"status", "failure"}, {"reason", error.what()}};
+            }
             mqttController::remote_command_publish(reply.dump());
         }
 

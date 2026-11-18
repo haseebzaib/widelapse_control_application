@@ -47,4 +47,13 @@ if(BUILD_TESTING)
     target_include_directories(schedulingController_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(schedulingController_test PRIVATE Threads::Threads)
     add_test(NAME schedulingController COMMAND schedulingController_test)
+    add_executable(scheduling_setup_test
+        tests/scheduling_setup_test.cpp
+        cloudController/mqttRemoteCommand.cpp
+        schedulingController/schedulingController.cpp
+        utils/utils.cpp
+    )
+    target_include_directories(scheduling_setup_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(scheduling_setup_test PRIVATE Threads::Threads PahoMqttCpp::paho-mqttpp3)
+    add_test(NAME scheduling_setup COMMAND scheduling_setup_test)
 endif()

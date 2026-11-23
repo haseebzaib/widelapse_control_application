@@ -7,6 +7,8 @@
 #include <utility>
 #include "utils/utils.hpp"
 #include "schedulingController/schedulingController.hpp"
+#include "main.hpp"
+#include "sftpController/sftpController.hpp"
 
 namespace cloudController
 {
@@ -15,11 +17,17 @@ namespace cloudController
     {
         static void wifi_setup(const nlohmann::json &data);
         static void scheduling_setup(const nlohmann::json &data);
+        static void wifi_scan(const nlohmann::json &data);
+        static void total_shots(const nlohmann::json &data);
+        static void picture_uploads(const nlohmann::json &data);
 
         static const std::unordered_map<std::string, std::function<void(const nlohmann::json &)>> commands = {
 
             {"wifiSetup", wifi_setup},
-            {"scheduling_setup", scheduling_setup}
+            {"scheduling_setup", scheduling_setup},
+            {"wifi_scan", wifi_scan},
+            {"total_shots", total_shots},
+            {"picture_uploads", picture_uploads},
 
         };
 
@@ -35,11 +43,6 @@ namespace cloudController
         {
             std::cout << std::format("[{}][{}] {}\n", loggingLevel, logTag, msg);
         }
-
-        
-
-
-
 
         static void wifi_setup(const nlohmann::json &data)
         {
@@ -246,6 +249,78 @@ namespace cloudController
             {
                 apply_schedules(data, true);
                 reply["cmdData"] = {{"status", "success"}, {"reason", ""}};
+            }
+            catch (const std::exception &error)
+            {
+                logging(logLevel::err, error.what());
+                reply["cmdData"] = {{"status", "failure"}, {"reason", error.what()}};
+            }
+            mqttController::remote_command_publish(reply.dump());
+        }
+
+        static void wifi_scan(const nlohmann::json &data)
+        {
+
+            logging(logLevel::info, "inside wifi scan cb");
+            nlohmann::json reply = mqttMessageTemplates::remoteCommand();
+            reply["cmdType"] = "wifi_scan";
+            try
+            {
+
+                reply["cmdData"] = {
+                    {"status", "success"},
+                    {"data", utils::getWifiScan()},
+                    {"reason", ""}};
+            }
+            catch (const std::exception &error)
+            {
+                logging(logLevel::err, error.what());
+                reply["cmdData"] = {{"status", "failure"}, {"reason", error.what()}};
+            }
+            mqttController::remote_command_publish(reply.dump());
+        }
+
+        static void total_shots(const nlohmann::json &data)
+        {
+
+            logging(logLevel::info, "inside wifi scan cb");
+            nlohmann::json reply = mqttMessageTemplates::remoteCommand();
+            reply["cmdType"] = "total_shots";
+            try
+            {
+
+                reply["cmdData"] = {
+                    {"status", "success"},
+                    {"data", utils::getWifiScan()},
+                    {"reason", ""}};
+            }
+            catch (const std::exception &error)
+            {
+                logging(logLevel::err, error.what());
+                reply["cmdData"] = {{"status", "failure"}, {"reason", error.what()}};
+            }
+            mqttController::remote_command_publish(reply.dump());
+        }
+        static void picture_uploads(const nlohmann::json &data)
+        {
+
+            logging(logLevel::info, "inside wifi scan cb");
+            nlohmann::json reply = mqttMessageTemplates::remoteCommand();
+            reply["cmdType"] = "picture_uploads";
+            try
+            {
+
+                sftpController::imageDirectoryInfo uploadInfo = mainSftpServer.image_direcotry_info();
+
+                nlohmann::json uploadData = {
+                    {"totalImagesTaken", uploadInfo.totalImages},
+                    {"totalImagesTransfered", uploadInfo.totalImagesTransfered},
+                    {"totalImagesFailed", uploadInfo.totalImagesFailed}};
+
+                reply["cmdData"] = {
+                    {"status", "success"},
+                    {"data", uploadData},
+                    {"reason", ""}};
             }
             catch (const std::exception &error)
             {

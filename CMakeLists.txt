@@ -18,6 +18,7 @@ pkg_check_modules(LIBSSH2 REQUIRED IMPORTED_TARGET libssh2)
 
 add_executable(controlApp 
  main.cpp
+ mainSftpServer.cpp
 )
 
 
@@ -50,10 +51,16 @@ if(BUILD_TESTING)
     add_executable(scheduling_setup_test
         tests/scheduling_setup_test.cpp
         cloudController/mqttRemoteCommand.cpp
+        mainSftpServer.cpp
         schedulingController/schedulingController.cpp
+        sftpController/sftpController.cpp
         utils/utils.cpp
     )
     target_include_directories(scheduling_setup_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-    target_link_libraries(scheduling_setup_test PRIVATE Threads::Threads PahoMqttCpp::paho-mqttpp3)
+    target_link_libraries(scheduling_setup_test PRIVATE
+        PkgConfig::LIBSSH2
+        Threads::Threads
+        PahoMqttCpp::paho-mqttpp3
+    )
     add_test(NAME scheduling_setup COMMAND scheduling_setup_test)
 endif()

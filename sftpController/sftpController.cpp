@@ -18,6 +18,10 @@ sftpController::sftpController()
     {
         logging(logLevel::err, "LIBSSH2 initialization failed");
     }
+
+    imageDirectoryInfo_.totalImages = 0;
+    imageDirectoryInfo_.totalImagesFailed = 0;
+    imageDirectoryInfo_.totalImagesTransfered = 0;
 }
 
 sftpController::~sftpController()
@@ -179,8 +183,8 @@ bool sftpController::transfer(std::string_view sourcePath, std::string_view dest
     }
 
     sftp_handle_ = libssh2_sftp_open(sftp_session_, destination.c_str(),
-                                    LIBSSH2_FXF_WRITE | LIBSSH2_FXF_CREAT | LIBSSH2_FXF_TRUNC,
-                                    0644);
+                                     LIBSSH2_FXF_WRITE | LIBSSH2_FXF_CREAT | LIBSSH2_FXF_TRUNC,
+                                     0644);
     if (!sftp_handle_)
     {
         logging(logLevel::err, "Unable to open remote file " + destination);
@@ -221,8 +225,34 @@ bool sftpController::transfer(std::string_view sourcePath, std::string_view dest
     return success;
 }
 
+sftpController::imageDirectoryInfo sftpController::image_direcotry_info()
+{
+
+    imageDirectoryInfo_.totalImages = 0;
+
+    if (std::filesystem::exists("/opt/widelapse/images"))
+    {
+
+        for (const auto &entry : std::filesystem::directory_iterator("/opt/widelapse/images"))
+        {
+            const auto &path = entry.path();
+            if (entry.is_regular_file() && path.extension() == ".jpg")
+            {
+                imageDirectoryInfo_.totalImages++;
+
+                if (std::filesystem::exists(path.string() + ".sent"))
+                {
+                    imageDirectoryInfo_.totalImagesTransfered++;
+                }
+            }
+        }
+    }
+
+    return imageDirectoryInfo_;
+}
+
 bool sftpController::transfer_pending_images(const std::filesystem::path &imageDirectory,
-                                              const std::filesystem::path &remoteDirectory)
+                                             const std::filesystem::path &remoteDirectory)
 {
     std::vector<std::filesystem::path> pending;
     for (const auto &entry : std::filesystem::directory_iterator(imageDirectory))
@@ -231,6 +261,7 @@ bool sftpController::transfer_pending_images(const std::filesystem::path &imageD
         if (entry.is_regular_file() && path.extension() == ".jpg" &&
             !std::filesystem::exists(path.string() + ".sent"))
         {
+           
             pending.push_back(path);
         }
     }
@@ -239,8 +270,10 @@ bool sftpController::transfer_pending_images(const std::filesystem::path &imageD
     for (const auto &path : pending)
     {
         if (!transfer(path.string(), (remoteDirectory / path.filename()).string()))
+        {
+            imageDirectoryInfo_.totalImagesFailed++;
             return false; // Leave this and remaining images pending for the next run.
-
+        }
         std::ofstream marker(path.string() + ".sent");
         marker << "sent\n";
         marker.close();

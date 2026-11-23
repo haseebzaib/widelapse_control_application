@@ -21,10 +21,17 @@ public:
     cameraController(const cameraController &) = delete;
     cameraController &operator=(const cameraController &) = delete;
 
+    struct cameraShotsInfo {
+
+        uint32_t totalShotsTaken;
+        uint32_t totalShotsFailed;
+    };
+    
     bool connect();
     void disconnect();
 
     std::string get_summary();
+
 
     bool capture_image(std::filesystem::path path);
 

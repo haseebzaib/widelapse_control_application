@@ -24,12 +24,20 @@ public:
     sftpController(const sftpController &) = delete;
     sftpController &operator=(const sftpController &) = delete;
 
+    struct imageDirectoryInfo {
+
+        uint32_t totalImages; //shots taken
+        uint32_t totalImagesTransfered;
+        uint32_t totalImagesFailed;
+
+    };
 
     bool connect_sftp(std::string_view addr,std::string_view username,std::string_view password);
     bool is_connected();
     void disconnect_sftp();
 
     bool transfer(std::string_view sourcePath, std::string_view destinationPath);
+    imageDirectoryInfo image_direcotry_info();
     bool transfer_pending_images(const std::filesystem::path &imageDirectory,
                                  const std::filesystem::path &remoteDirectory);
 
@@ -43,6 +51,7 @@ private:
     void logging(std::string_view loggingLevel, std::string msg);
     inline static const std::string logTag = "sftpController";
 
+    imageDirectoryInfo imageDirectoryInfo_;
 
     uint32_t hostaddr_;
     libssh2_socket_t sock_ = LIBSSH2_INVALID_SOCKET;

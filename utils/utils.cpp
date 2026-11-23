@@ -59,6 +59,56 @@ namespace utils
 
         return true;
     }
+
+
+
+    nlohmann::json getWifiScan()
+    {
+        FILE *pipe = popen("/usr/local/bin/widelapse-network --wifi-scan", "r");
+        if(!pipe)
+        {
+          throw std::runtime_error("failed to execute the script");
+        }
+
+        std::string output;
+        char buffer[4096];
+        while(fgets(buffer,sizeof(buffer),pipe))
+        {
+            output += buffer;
+        }
+        int status = pclose(pipe);
+
+        if(status != 0)
+        {
+           throw std::runtime_error("failed to close network script");
+        }
+        
+        /*
+                    {
+            "ok": true,
+            "interface": "wlan0",
+            "updated_at": 1795447294,
+            "networks": [
+                {
+                "ssid": "HUAWEI-FxmS",
+                "ssid_hex": "4855415745492d46786d53",
+                "hidden": false,
+                "bssid": "1C:3D:2F:63:AD:8C",
+                "signal_percent": 24,
+                "frequency_mhz": 2442,
+                "security": "WPA/RSN",
+                "wpa_flags": 332,
+                "rsn_flags": 332,
+                "connected": false
+                }
+            ]
+            }
+        */
+        return nlohmann::json::parse(output);
+    }
+
+
+
     bool save_json(const std::string &path, const nlohmann::json &data)
     {
         try {

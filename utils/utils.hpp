@@ -16,6 +16,7 @@ namespace utils
     nlohmann::json getNetworkInfo();
 
     bool reload_network();
+    nlohmann::json getWifiScan();
     bool save_json(const std::string &path,const nlohmann::json &data);
     nlohmann::json read_json(const std::string &path);
 }

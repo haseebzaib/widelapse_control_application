@@ -304,7 +304,7 @@ namespace cloudController
         static void picture_uploads(const nlohmann::json &data)
         {
 
-            logging(logLevel::info, "inside wifi scan cb");
+            logging(logLevel::info, "inside picture uploads cb");
             nlohmann::json reply = mqttMessageTemplates::remoteCommand();
             reply["cmdType"] = "picture_uploads";
             try

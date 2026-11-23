@@ -229,6 +229,7 @@ sftpController::imageDirectoryInfo sftpController::image_direcotry_info()
 {
 
     imageDirectoryInfo_.totalImages = 0;
+     imageDirectoryInfo_.totalImagesTransfered = 0;
 
     if (std::filesystem::exists("/opt/widelapse/images"))
     {

@@ -141,7 +141,7 @@ CPU temperatures are in degrees Celsius. RAM and storage values are in MiB. `roo
 
 ## Remote commands
 
-The cloud can send Wi-Fi settings and capture/transfer schedules to a registered device. Both commands use the same topics:
+The cloud can send Wi-Fi settings and capture/transfer schedules, scan nearby Wi-Fi networks, and request capture/upload counts from a registered device. All commands use the same topics:
 
 | Direction | Topic |
 | --- | --- |
@@ -152,7 +152,15 @@ For example, publish commands for `widelapse_aabbccddeeff` to `widelapse/remoteC
 
 Subscribe for results before sending a command. Publish with QoS 1 and retain disabled so old commands are not replayed when a device connects. The device subscribes and replies at QoS 1, with replies not retained. Commands are processed after registration is acknowledged.
 
-Requests contain `cmdType` and `cmdData`. Replies return the same `cmdType`, with `status` and `reason` inside `cmdData`. Command names are case-sensitive: use exactly `wifiSetup` and `scheduling_setup`.
+Requests contain `cmdType` and `cmdData`. Replies return the same `cmdType`, with `status` and `reason` inside `cmdData`. Queries also return a `data` field on success. Command names are case-sensitive:
+
+| `cmdType` | Purpose |
+| --- | --- |
+| `wifiSetup` | Update Wi-Fi credentials |
+| `scheduling_setup` | Replace capture and transfer schedules |
+| `wifi_scan` | Scan nearby Wi-Fi access points |
+| `total_shots` | Get successful and failed capture counts |
+| `picture_uploads` | Get local image and upload counts |
 
 There is no request ID in the current format. Send one command at a time per device and wait for its result before sending the next. A broker delivery acknowledgement does not confirm that a command was applied; use the device's result message. If no result arrives, keep the outcome as unknown. Unknown command names currently receive no reply.
 
@@ -280,3 +288,145 @@ To clear all camera and transfer schedules, send:
   }
 }
 ```
+
+### Wi-Fi scan
+
+Send on `widelapse/remoteCommands/0/<clientId>`:
+
+```json
+{
+  "cmdType": "wifi_scan",
+  "cmdData": {}
+}
+```
+
+The device scans nearby access points and replies on `widelapse/remoteCommands/1/<clientId>`. This does not change credentials or connect to a network.
+
+Example success reply:
+
+```json
+{
+  "cmdType": "wifi_scan",
+  "cmdData": {
+    "status": "success",
+    "data": {
+      "ok": true,
+      "interface": "wlan0",
+      "updated_at": 1795447294,
+      "networks": [
+        {
+          "ssid": "HUAWEI-FxmS",
+          "ssid_hex": "4855415745492d46786d53",
+          "hidden": false,
+          "bssid": "1C:3D:2F:63:AD:8C",
+          "signal_percent": 24,
+          "frequency_mhz": 2442,
+          "security": "WPA/RSN",
+          "wpa_flags": 332,
+          "rsn_flags": 332,
+          "connected": false
+        }
+      ]
+    },
+    "reason": ""
+  }
+}
+```
+
+`networks` is sorted by signal strength, strongest first. An empty array is a valid result. Each entry describes an access point, so several entries can have the same SSID and different BSSIDs.
+
+| Field | Meaning |
+| --- | --- |
+| `ssid` / `ssid_hex` | Network name for display / raw SSID bytes encoded as hex |
+| `hidden` | Whether the access point has an empty SSID |
+| `bssid` | Access point MAC address |
+| `signal_percent` | Signal strength as a percentage |
+| `frequency_mhz` | Radio frequency in MHz |
+| `security` | `OPEN`, `WEP`, `WPA`, `RSN`, or `WPA/RSN` |
+| `wpa_flags` / `rsn_flags` | Numeric security capability flags from NetworkManager |
+| `connected` | Whether this is the currently connected access point |
+
+`updated_at` is a Unix timestamp in seconds. The scan can take around 15 seconds, in addition to command processing time; allow for that when waiting for a reply. Wi-Fi must already be enabled and available.
+
+If the scan script fails, the current device returns a failure response such as:
+
+```json
+{
+  "cmdType": "wifi_scan",
+  "cmdData": {
+    "status": "failure",
+    "reason": "failed to close network script"
+  }
+}
+```
+
+That is the current script-exit error text; it does not necessarily mean closing the script was the underlying problem. The reply does not include `data` on failure.
+
+### Capture counts
+
+Send on `widelapse/remoteCommands/0/<clientId>`:
+
+```json
+{
+  "cmdType": "total_shots",
+  "cmdData": {}
+}
+```
+
+Example reply on `widelapse/remoteCommands/1/<clientId>`:
+
+```json
+{
+  "cmdType": "total_shots",
+  "cmdData": {
+    "status": "success",
+    "data": {
+      "totalShotsTaken": 120,
+      "totalShotsFailed": 3
+    },
+    "reason": ""
+  }
+}
+```
+
+`totalShotsTaken` counts successful captures and `totalShotsFailed` counts failed capture attempts. These counters cover the current application run and reset when the application restarts. They are not the camera's lifetime shutter count. This command only reads the counters; it does not take a picture.
+
+### Picture upload counts
+
+Send on `widelapse/remoteCommands/0/<clientId>`:
+
+```json
+{
+  "cmdType": "picture_uploads",
+  "cmdData": {}
+}
+```
+
+Example reply on `widelapse/remoteCommands/1/<clientId>`:
+
+```json
+{
+  "cmdType": "picture_uploads",
+  "cmdData": {
+    "status": "success",
+    "data": {
+      "totalImagesTaken": 120,
+      "totalImagesTransfered": 100,
+      "totalImagesFailed": 2
+    },
+    "reason": ""
+  }
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `totalImagesTaken` | Number of `.jpg` files currently in the device's image directory, including uploaded images still stored there |
+| `totalImagesTransfered` | Number of those images with a local `.sent` marker recording a successful upload |
+| `totalImagesFailed` | Failed image transfer attempts during the current application run; repeated failures for the same image can each increase this count |
+
+Use `totalImagesTransfered` exactly as written, with one `r` in `Transfered`. Pending uploads can be calculated as `totalImagesTaken - totalImagesTransfered`. The failed-attempt count is separate from that calculation and resets when the application restarts. The other two counts are read from the local image files and markers on each request, so they can change if files are removed.
+
+This command reports upload status; it does not start an upload or check the remote server's files. Its counts may differ from `total_shots`, which reports captures during the current application run.
+
+For `total_shots` and `picture_uploads`, a caught error returns the same `cmdType` with `cmdData.status` set to `"failure"` and the error text in `cmdData.reason`. The `data` field is omitted. All three queries are on demand and are not part of the regular 60-second updates.

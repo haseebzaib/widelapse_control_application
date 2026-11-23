@@ -15,8 +15,6 @@
 
 diagnostic::systemDiagnostic systemInfo;
 
-cameraController mainCamera;
-
 std::string get_image_name_with_timestamp()
 {
     const auto now = std::chrono::system_clock::now();

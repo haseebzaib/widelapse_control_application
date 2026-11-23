@@ -8,6 +8,7 @@
 #include "utils/utils.hpp"
 #include "schedulingController/schedulingController.hpp"
 #include "main.hpp"
+#include "cameraController/cameraController.hpp"
 #include "sftpController/sftpController.hpp"
 
 namespace cloudController
@@ -280,18 +281,17 @@ namespace cloudController
             mqttController::remote_command_publish(reply.dump());
         }
 
-        static void total_shots(const nlohmann::json &data)
+        static void total_shots(const nlohmann::json &)
         {
-
-            logging(logLevel::info, "inside wifi scan cb");
             nlohmann::json reply = mqttMessageTemplates::remoteCommand();
             reply["cmdType"] = "total_shots";
             try
             {
-
+                const auto shots = mainCamera.get_shots_info();
                 reply["cmdData"] = {
                     {"status", "success"},
-                    {"data", utils::getWifiScan()},
+                    {"data", {{"totalShotsTaken", shots.totalShotsTaken},
+                              {"totalShotsFailed", shots.totalShotsFailed}}},
                     {"reason", ""}};
             }
             catch (const std::exception &error)

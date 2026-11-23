@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+#include <mutex>
 #include "string"
 #include "format"
 #include "iostream"
@@ -32,6 +34,7 @@ public:
 
     std::string get_summary();
 
+    cameraShotsInfo get_shots_info() const;
 
     bool capture_image(std::filesystem::path path);
 
@@ -44,6 +47,7 @@ private:
     };
     void logging(std::string_view loggingLevel, std::string msg);
     bool create_context();
+    bool capture_image_file(const std::filesystem::path &path);
 
     static void error_cb(GPContext *context, const char *msg, void *data);
     static void status_cb(GPContext *context, const char *msg, void *data);
@@ -57,6 +61,8 @@ private:
                                  void *data);
 
     inline static const std::string logTag = "cameraController";
+    mutable std::mutex shotsInfoMutex_;
+    cameraShotsInfo cameraShotsInfo_{};
     Camera *camera_ = nullptr;
     GPContext *context_ = nullptr;
     bool connected_ = false;

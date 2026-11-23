@@ -18,6 +18,7 @@ pkg_check_modules(LIBSSH2 REQUIRED IMPORTED_TARGET libssh2)
 
 add_executable(controlApp 
  main.cpp
+ mainCamera.cpp
  mainSftpServer.cpp
 )
 
@@ -50,7 +51,9 @@ if(BUILD_TESTING)
     add_test(NAME schedulingController COMMAND schedulingController_test)
     add_executable(scheduling_setup_test
         tests/scheduling_setup_test.cpp
+        cameraController/cameraController.cpp
         cloudController/mqttRemoteCommand.cpp
+        mainCamera.cpp
         mainSftpServer.cpp
         schedulingController/schedulingController.cpp
         sftpController/sftpController.cpp
@@ -58,6 +61,7 @@ if(BUILD_TESTING)
     )
     target_include_directories(scheduling_setup_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(scheduling_setup_test PRIVATE
+        PkgConfig::GPHOTO2
         PkgConfig::LIBSSH2
         Threads::Threads
         PahoMqttCpp::paho-mqttpp3

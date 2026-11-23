@@ -114,7 +114,35 @@ std::string cameraController::get_summary()
     return summary.text;
 }
 
+cameraController::cameraShotsInfo cameraController::get_shots_info() const
+{
+    const std::lock_guard lock(shotsInfoMutex_);
+    return cameraShotsInfo_;
+}
+
 bool cameraController::capture_image(std::filesystem::path path)
+{
+    bool captured;
+    try
+    {
+        captured = capture_image_file(path);
+    }
+    catch (...)
+    {
+        const std::lock_guard lock(shotsInfoMutex_);
+        ++cameraShotsInfo_.totalShotsFailed;
+        throw;
+    }
+
+    const std::lock_guard lock(shotsInfoMutex_);
+    if (captured)
+        ++cameraShotsInfo_.totalShotsTaken;
+    else
+        ++cameraShotsInfo_.totalShotsFailed;
+    return captured;
+}
+
+bool cameraController::capture_image_file(const std::filesystem::path &path)
 {
     if (!connected_)
     {

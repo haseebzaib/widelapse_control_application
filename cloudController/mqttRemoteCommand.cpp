@@ -372,6 +372,8 @@ namespace cloudController
 
                 mainSftpServer.update_server_info(addr_, port_, username_, password_, remoteDirectoryPath_);
 
+                utils::save_json("/opt/widelapse/configs/sftp_information.json",cmdData);
+
                 reply["cmdData"] = {{"status", "success"}, {"reason", ""}};
             }
             catch (const std::exception &error)
@@ -403,6 +405,8 @@ namespace cloudController
                  {"savedRemoteDirectoryPath", sftpServerInfo_.remoteDirectoryPath},
 
                 };
+
+                
 
 
                 reply["cmdData"] = {{"status", "success"}, {"data", uploadData}, {"reason", ""}};

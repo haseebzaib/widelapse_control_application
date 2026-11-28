@@ -4,6 +4,7 @@
 #include "cloudController/mqttController.hpp"
 #include "cloudController/mqttRemoteCommand.hpp"
 #include "utils/diagnostic.hpp"
+#include "utils/utils.hpp"
 #include "main.hpp"
 #include <chrono>
 #include <ctime>
@@ -17,12 +18,9 @@ diagnostic::systemDiagnostic systemInfo;
 std::mutex cameraMutex;
 const std::filesystem::path imageDirectory = "/opt/widelapse/images";
 
-
-
 static std::string get_image_name_with_timestamp();
 static void capture();
 static void transfer();
-
 
 static std::string get_image_name_with_timestamp()
 {
@@ -40,8 +38,6 @@ static std::string get_image_name_with_timestamp()
                        localTime.tm_mday, localTime.tm_hour,
                        localTime.tm_min, localTime.tm_sec, milliseconds);
 }
-
-
 
 static void capture()
 {
@@ -78,7 +74,31 @@ int main()
     using namespace std::chrono;
 
     std::filesystem::create_directories(imageDirectory);
-    mainSftpServer.update_server_info("94.130.57.90",22,"sftpuser","P@ssword.com@2k25*","/media/newc2ae86228-projcde50db9-came935a3401");
+
+    const auto saved = utils::read_json("/opt/widelapse/configs/sftp_information.json");
+    if (!saved.is_null())
+    {
+
+        std::string addr_ = saved.at("serverAddr").get<std::string>();
+        int port_ = saved.at("port").get<int>();
+        std::string username_ = saved.at("username").get<std::string>();
+        std::string password_ = saved.at("password").get<std::string>();
+        std::string remoteDirectoryPath_ = saved.at("remoteDirectoryPath").get<std::string>();
+
+        if (addr_.empty() || port_ <= 0 || port_ > 65535 ||
+            username_.empty() || password_.empty() || remoteDirectoryPath_.empty())
+        {
+            throw std::invalid_argument("one or more fields are empty inside the payload");
+        }
+
+        mainSftpServer.update_server_info(addr_, port_, username_, password_, remoteDirectoryPath_);
+    }
+    else
+    {
+        std::cout << "no sftp server file saved so using default credentials\n";
+
+        mainSftpServer.update_server_info("94.130.57.90", 22, "sftpuser", "P@ssword.com@2k25*", "/media/newc2ae86228-projcde50db9-came935a3401");
+    }
 
     // Declared last: both workers stop before their captured resources are destroyed.
     schedulingController cameraScheduler("cameraScheduler");

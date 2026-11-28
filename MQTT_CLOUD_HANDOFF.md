@@ -141,7 +141,7 @@ CPU temperatures are in degrees Celsius. RAM and storage values are in MiB. `roo
 
 ## Remote commands
 
-The cloud can send Wi-Fi settings and capture/transfer schedules, scan nearby Wi-Fi networks, and request capture/upload counts from a registered device. All commands use the same topics:
+The cloud can send Wi-Fi settings, SFTP settings, and capture/transfer schedules, scan nearby Wi-Fi networks, and request capture/upload counts from a registered device. All commands use the same topics:
 
 | Direction | Topic |
 | --- | --- |
@@ -152,7 +152,7 @@ For example, publish commands for `widelapse_aabbccddeeff` to `widelapse/remoteC
 
 Subscribe for results before sending a command. Publish with QoS 1 and retain disabled so old commands are not replayed when a device connects. The device subscribes and replies at QoS 1, with replies not retained. Commands are processed after registration is acknowledged.
 
-Requests contain `cmdType` and `cmdData`. Replies return the same `cmdType`, with `status` and `reason` inside `cmdData`. Queries also return a `data` field on success. Command names are case-sensitive:
+Requests contain `cmdType` and `cmdData`. Replies normally return the same `cmdType`, with `status` and `reason` inside `cmdData`. The current exception is `get_sftp_information`, which replies with `cmdType: "sftp_information"`. Queries also return a `data` field on success. Command names are case-sensitive:
 
 | `cmdType` | Purpose |
 | --- | --- |
@@ -161,6 +161,8 @@ Requests contain `cmdType` and `cmdData`. Replies return the same `cmdType`, wit
 | `wifi_scan` | Scan nearby Wi-Fi access points |
 | `total_shots` | Get successful and failed capture counts |
 | `picture_uploads` | Get local image and upload counts |
+| `sftp_information` | Update the SFTP server settings |
+| `get_sftp_information` | Read the current SFTP server settings |
 
 There is no request ID in the current format. Send one command at a time per device and wait for its result before sending the next. A broker delivery acknowledgement does not confirm that a command was applied; use the device's result message. If no result arrives, keep the outcome as unknown. Unknown command names currently receive no reply.
 
@@ -430,3 +432,94 @@ Use `totalImagesTransfered` exactly as written, with one `r` in `Transfered`. Pe
 This command reports upload status; it does not start an upload or check the remote server's files. Its counts may differ from `total_shots`, which reports captures during the current application run.
 
 For `total_shots` and `picture_uploads`, a caught error returns the same `cmdType` with `cmdData.status` set to `"failure"` and the error text in `cmdData.reason`. The `data` field is omitted. All three queries are on demand and are not part of the regular 60-second updates.
+
+### Update SFTP settings
+
+Send on `widelapse/remoteCommands/0/<clientId>`:
+
+```json
+{
+  "cmdType": "sftp_information",
+  "cmdData": {
+    "serverAddr": "192.0.2.10",
+    "port": 22,
+    "username": "widelapse",
+    "password": "example-password",
+    "remoteDirectoryPath": "/media/widelapse/site-01"
+  }
+}
+```
+
+All five fields are required. Send the complete settings on each update.
+
+| Field | Value |
+| --- | --- |
+| `serverAddr` | Non-empty string containing the server's IPv4 address. The current connection code does not resolve hostnames. |
+| `port` | Integer from `1` to `65535`; send `22` for the standard SFTP port |
+| `username` | Non-empty string |
+| `password` | Non-empty string |
+| `remoteDirectoryPath` | Non-empty string containing the full destination directory path on the server |
+
+Success reply on `widelapse/remoteCommands/1/<clientId>`:
+
+```json
+{
+  "cmdType": "sftp_information",
+  "cmdData": {
+    "status": "success",
+    "reason": ""
+  }
+}
+```
+
+Success means the device updated its in-memory settings. The command does not test the server connection, verify the credentials or destination directory, or start an upload. It also does not disconnect an existing SFTP session; the new server address, port, and credentials are used on the next connection. These settings are not currently saved to disk by this command, so the cloud needs to send them again after an application restart.
+
+Failure reply example for an empty field or an out-of-range port:
+
+```json
+{
+  "cmdType": "sftp_information",
+  "cmdData": {
+    "status": "failure",
+    "reason": "one or more fields are empty inside the payload"
+  }
+}
+```
+
+Missing fields or incorrect JSON types can produce other error text. Use `status` to determine success and display or log the returned `reason`.
+
+### Read SFTP settings
+
+Send on `widelapse/remoteCommands/0/<clientId>`:
+
+```json
+{
+  "cmdType": "get_sftp_information",
+  "cmdData": {}
+}
+```
+
+Example reply on `widelapse/remoteCommands/1/<clientId>`:
+
+```json
+{
+  "cmdType": "sftp_information",
+  "cmdData": {
+    "status": "success",
+    "data": {
+      "savedServer": "192.0.2.10",
+      "savedPort": 22,
+      "savedUsername": "widelapse",
+      "savedPassword": "example-password",
+      "savedRemoteDirectoryPath": "/media/widelapse/site-01"
+    },
+    "reason": ""
+  }
+}
+```
+
+The reply currently uses `sftp_information`, not `get_sftp_information`, as its `cmdType`. Keep track of the outstanding request when matching this response. These are the current in-memory settings; the `saved` prefix does not mean they have been persisted to disk or that a connection has succeeded.
+
+The response includes the password as `savedPassword`, so treat this payload as credentials and mask the password in the cloud UI and logs.
+
+If reading the settings throws an error, the device returns `cmdType: "sftp_information"` with `cmdData.status: "failure"`, the error text in `cmdData.reason`, and no `data` field. This query runs on demand and is not included in the regular updates.

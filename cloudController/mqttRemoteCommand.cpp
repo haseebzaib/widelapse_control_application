@@ -21,6 +21,8 @@ namespace cloudController
         static void wifi_scan(const nlohmann::json &data);
         static void total_shots(const nlohmann::json &data);
         static void picture_uploads(const nlohmann::json &data);
+        static void sftp_information(const nlohmann::json &data);
+        static void get_sftp_information(const nlohmann::json &data);
 
         static const std::unordered_map<std::string, std::function<void(const nlohmann::json &)>> commands = {
 
@@ -29,6 +31,8 @@ namespace cloudController
             {"wifi_scan", wifi_scan},
             {"total_shots", total_shots},
             {"picture_uploads", picture_uploads},
+            {"sftp_information", sftp_information},
+            {"get_sftp_information", get_sftp_information},
 
         };
 
@@ -290,8 +294,7 @@ namespace cloudController
                 const auto shots = mainCamera.get_shots_info();
                 reply["cmdData"] = {
                     {"status", "success"},
-                    {"data", {{"totalShotsTaken", shots.totalShotsTaken},
-                              {"totalShotsFailed", shots.totalShotsFailed}}},
+                    {"data", {{"totalShotsTaken", shots.totalShotsTaken}, {"totalShotsFailed", shots.totalShotsFailed}}},
                     {"reason", ""}};
             }
             catch (const std::exception &error)
@@ -327,6 +330,89 @@ namespace cloudController
                 logging(logLevel::err, error.what());
                 reply["cmdData"] = {{"status", "failure"}, {"reason", error.what()}};
             }
+            mqttController::remote_command_publish(reply.dump());
+        }
+
+        static void sftp_information(const nlohmann::json &data)
+        {
+            logging(logLevel::info, "inside sftp information cb");
+            nlohmann::json reply = mqttMessageTemplates::remoteCommand();
+            reply["cmdType"] = "sftp_information";
+            try
+            {
+                /**
+                 * {
+                 *   cmdType : "sftp_information"
+                 *   cmdData : {
+                 *    "serverAddr" : <string>,
+                 *    "port" : <int>,
+                 *    "username" : <string>,
+                 *    "password" : <string>,
+                 *    "remoteDirectoryPath" : <string> //should be complete path like following /media/newc2ae86228-projcde50db9-came935a3401
+
+                 *   }
+                 *
+                 * }
+                 *
+                 */
+
+                const auto &cmdData = data.at("cmdData");
+
+                std::string addr_ = cmdData.at("serverAddr").get<std::string>();
+                int port_ = cmdData.at("port").get<int>();
+                std::string username_ = cmdData.at("username").get<std::string>();
+                std::string password_ = cmdData.at("password").get<std::string>();
+                std::string remoteDirectoryPath_ = cmdData.at("remoteDirectoryPath").get<std::string>();
+
+                if (addr_.empty() || port_ <= 0 || port_ > 65535 ||
+                    username_.empty() || password_.empty() || remoteDirectoryPath_.empty())
+                {
+                    throw std::invalid_argument("one or more fields are empty inside the payload");
+                }
+
+                mainSftpServer.update_server_info(addr_, port_, username_, password_, remoteDirectoryPath_);
+
+                reply["cmdData"] = {{"status", "success"}, {"reason", ""}};
+            }
+            catch (const std::exception &error)
+            {
+                logging(logLevel::err, error.what());
+                reply["cmdData"] = {{"status", "failure"}, {"reason", error.what()}};
+            }
+
+            mqttController::remote_command_publish(reply.dump());
+        }
+
+        static void get_sftp_information(const nlohmann::json &data)
+        {
+            logging(logLevel::info, "inside get sftp information cb");
+            nlohmann::json reply = mqttMessageTemplates::remoteCommand();
+            reply["cmdType"] = "sftp_information";
+            try
+            {
+
+
+                sftpController::sftpServerInfo sftpServerInfo_;
+                sftpServerInfo_ = mainSftpServer.get_server_info();
+
+                nlohmann::json uploadData = {
+                 {"savedServer", sftpServerInfo_.addr},
+                 {"savedPort", sftpServerInfo_.port},
+                 {"savedUsername", sftpServerInfo_.username},
+                 {"savedPassword", sftpServerInfo_.password},
+                 {"savedRemoteDirectoryPath", sftpServerInfo_.remoteDirectoryPath},
+
+                };
+
+
+                reply["cmdData"] = {{"status", "success"}, {"data", uploadData}, {"reason", ""}};
+            }
+            catch (const std::exception &error)
+            {
+                logging(logLevel::err, error.what());
+                reply["cmdData"] = {{"status", "failure"}, {"reason", error.what()}};
+            }
+
             mqttController::remote_command_publish(reply.dump());
         }
 

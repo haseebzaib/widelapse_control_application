@@ -14,8 +14,17 @@
 #include <string>
 
 diagnostic::systemDiagnostic systemInfo;
+std::mutex cameraMutex;
+const std::filesystem::path imageDirectory = "/opt/widelapse/images";
 
-std::string get_image_name_with_timestamp()
+
+
+static std::string get_image_name_with_timestamp();
+static void capture();
+static void transfer();
+
+
+static std::string get_image_name_with_timestamp()
 {
     const auto now = std::chrono::system_clock::now();
     const auto time = std::chrono::system_clock::to_time_t(now);
@@ -32,43 +41,44 @@ std::string get_image_name_with_timestamp()
                        localTime.tm_min, localTime.tm_sec, milliseconds);
 }
 
+
+
+static void capture()
+{
+    std::lock_guard lock(cameraMutex);
+    const auto imagePath = imageDirectory / get_image_name_with_timestamp();
+    // Publish the .jpg only after capture finishes so transfer cannot read it early.
+    const std::filesystem::path temporaryPath = imagePath.string() + ".part";
+    if (mainCamera.capture_image(temporaryPath))
+    {
+        std::filesystem::rename(temporaryPath, imagePath);
+        std::cout << "Image saved: " << imagePath << '\n';
+        /** we transfer anyways still in camera capture at the same time */
+        transfer();
+    }
+    else
+    {
+        std::filesystem::remove(temporaryPath);
+        std::cout << "Capture failed\n";
+    }
+}
+
+static void transfer()
+{
+    if (!mainSftpServer.is_connected() && !mainSftpServer.connect_sftp())
+    {
+        std::cout << "SFTP connection failed; retrying next transfer interval\n";
+        return;
+    }
+    mainSftpServer.transfer_pending_images(imageDirectory);
+}
+
 int main()
 {
     using namespace std::chrono;
 
-    std::mutex cameraMutex;
-    const std::filesystem::path imageDirectory = "/opt/widelapse/images";
-    const std::filesystem::path remoteDirectory = "/media/newc2ae86228-projcde50db9-came935a3401";
-
     std::filesystem::create_directories(imageDirectory);
-
-    const auto capture = [&]
-    {
-        std::lock_guard lock(cameraMutex);
-        const auto imagePath = imageDirectory / get_image_name_with_timestamp();
-        // Publish the .jpg only after capture finishes so transfer cannot read it early.
-        const std::filesystem::path temporaryPath = imagePath.string() + ".part";
-        if (mainCamera.capture_image(temporaryPath))
-        {
-            std::filesystem::rename(temporaryPath, imagePath);
-            std::cout << "Image saved: " << imagePath << '\n';
-        }
-        else
-        {
-            std::filesystem::remove(temporaryPath);
-            std::cout << "Capture failed\n";
-        }
-    };
-
-    const auto transfer = [&]
-    {
-        if (!mainSftpServer.is_connected() && !mainSftpServer.connect_sftp("94.130.57.90", "sftpuser", "P@ssword.com@2k25*"))
-        {
-            std::cout << "SFTP connection failed; retrying next transfer interval\n";
-            return;
-        }
-        mainSftpServer.transfer_pending_images(imageDirectory, remoteDirectory);
-    };
+    mainSftpServer.update_server_info("94.130.57.90",22,"sftpuser","P@ssword.com@2k25*","/media/newc2ae86228-projcde50db9-came935a3401");
 
     // Declared last: both workers stop before their captured resources are destroyed.
     schedulingController cameraScheduler("cameraScheduler");

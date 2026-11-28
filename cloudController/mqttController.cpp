@@ -256,9 +256,9 @@ namespace cloudController
             connOpts.set_clean_session(true);
             connOpts.set_keep_alive_interval(30);
             connOpts.set_connect_timeout(10);
-            // connOpts.set_user_name(userName);
-            // connOpts.set_password(passWord);
-            // connOpts.set_ssl(sslOpts);
+            connOpts.set_user_name(userName);
+            connOpts.set_password(passWord);
+            connOpts.set_ssl(sslOpts);
 
             mqttCallback = std::make_unique<callback>(
                 *mqttAsyncClient,

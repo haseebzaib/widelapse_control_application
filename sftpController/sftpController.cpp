@@ -31,13 +31,9 @@ sftpController::~sftpController()
         libssh2_exit();
 }
 
-bool sftpController::connect_sftp(std::string_view addr, std::string_view username, std::string_view password)
+bool sftpController::connect_sftp()
 {
     int rt = 1;
-
-    addr_ = addr;
-    username_ = username;
-    password_ = password;
 
     if (libssh2_init_status_ == false)
     {
@@ -55,7 +51,7 @@ bool sftpController::connect_sftp(std::string_view addr, std::string_view userna
     }
     disconnect_sftp();
 
-    hostaddr_ = inet_addr(addr_.c_str());
+    hostaddr_ = inet_addr(sftpServerInfo_.addr.c_str());
 
     sock_ = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -67,7 +63,7 @@ bool sftpController::connect_sftp(std::string_view addr, std::string_view userna
     }
 
     sin_.sin_family = AF_INET;
-    sin_.sin_port = htons(22);
+    sin_.sin_port = htons(sftpServerInfo_.port);
     sin_.sin_addr.s_addr = hostaddr_;
 
     logging(logLevel::info, std::format("hostaddr : {}", hostaddr_));
@@ -112,7 +108,7 @@ bool sftpController::connect_sftp(std::string_view addr, std::string_view userna
         return false;
     }
 
-    if (libssh2_userauth_password(session_, username_.c_str(), password_.c_str()))
+    if (libssh2_userauth_password(session_, sftpServerInfo_.username.c_str(), sftpServerInfo_.password.c_str()))
     {
         logging(logLevel::info, "Authentication by password failed");
         disconnect_sftp();
@@ -168,9 +164,22 @@ void sftpController::disconnect_sftp()
     connected_ = false;
 }
 
+void sftpController::update_server_info(std::string_view addr, int port, std::string_view username, std::string_view password, std::string_view directory)
+{
+    sftpServerInfo_.addr = addr;
+    sftpServerInfo_.port = port;
+    sftpServerInfo_.username = username;
+    sftpServerInfo_.password = password;
+    sftpServerInfo_.remoteDirectoryPath = directory;
+}
+sftpController::sftpServerInfo sftpController::get_server_info()
+{
+    return sftpServerInfo_;
+}
+
 bool sftpController::transfer(std::string_view sourcePath, std::string_view destinationPath)
 {
-    if (!connected_ && !connect_sftp(addr_, username_, password_))
+    if (!connected_ && !connect_sftp())
         return false;
 
     const std::string source(sourcePath);
@@ -229,7 +238,7 @@ sftpController::imageDirectoryInfo sftpController::image_direcotry_info()
 {
 
     imageDirectoryInfo_.totalImages = 0;
-     imageDirectoryInfo_.totalImagesTransfered = 0;
+    imageDirectoryInfo_.totalImagesTransfered = 0;
 
     if (std::filesystem::exists("/opt/widelapse/images"))
     {
@@ -252,8 +261,7 @@ sftpController::imageDirectoryInfo sftpController::image_direcotry_info()
     return imageDirectoryInfo_;
 }
 
-bool sftpController::transfer_pending_images(const std::filesystem::path &imageDirectory,
-                                             const std::filesystem::path &remoteDirectory)
+bool sftpController::transfer_pending_images(const std::filesystem::path &imageDirectory)
 {
     std::vector<std::filesystem::path> pending;
     for (const auto &entry : std::filesystem::directory_iterator(imageDirectory))
@@ -262,7 +270,7 @@ bool sftpController::transfer_pending_images(const std::filesystem::path &imageD
         if (entry.is_regular_file() && path.extension() == ".jpg" &&
             !std::filesystem::exists(path.string() + ".sent"))
         {
-           
+
             pending.push_back(path);
         }
     }
@@ -270,7 +278,7 @@ bool sftpController::transfer_pending_images(const std::filesystem::path &imageD
     std::sort(pending.begin(), pending.end());
     for (const auto &path : pending)
     {
-        if (!transfer(path.string(), (remoteDirectory / path.filename()).string()))
+        if (!transfer(path.string(), (sftpServerInfo_.remoteDirectoryPath / path.filename()).string()))
         {
             imageDirectoryInfo_.totalImagesFailed++;
             return false; // Leave this and remaining images pending for the next run.

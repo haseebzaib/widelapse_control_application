@@ -3,6 +3,7 @@
 #include "stdio.h"
 #include "string"
 #include "format"
+#include <mutex>
 #include "iostream"
 #include "libssh2.h"
 #include "libssh2_sftp.h"
@@ -32,14 +33,23 @@ public:
 
     };
 
-    bool connect_sftp(std::string_view addr,std::string_view username,std::string_view password);
+    struct sftpServerInfo {
+        std::string addr;
+        int port;
+        std::string username;
+        std::string password;
+        std::string remoteDirectoryPath;
+    };
+
+    bool connect_sftp();
     bool is_connected();
     void disconnect_sftp();
+    void update_server_info(std::string_view addr, int port, std::string_view username,std::string_view password,std::string_view directory);
+    sftpServerInfo get_server_info();
 
     bool transfer(std::string_view sourcePath, std::string_view destinationPath);
     imageDirectoryInfo image_direcotry_info();
-    bool transfer_pending_images(const std::filesystem::path &imageDirectory,
-                                 const std::filesystem::path &remoteDirectory);
+    bool transfer_pending_images(const std::filesystem::path &imageDirectory);
 
 private:
     struct logLevel
@@ -64,6 +74,8 @@ private:
     std::string addr_;
     std::string username_;
     std::string password_;
+    sftpServerInfo sftpServerInfo_;
+    mutable std::mutex sftpServerInfoMutex_;
 
     bool libssh2_init_status_ = false;
     bool connected_ = false;
